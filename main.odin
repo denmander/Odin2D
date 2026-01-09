@@ -150,20 +150,20 @@ main :: proc() {
 		for accumulated_time >= DT {
 			dir : rl.Vector2
 			P.old_position = P.position
-				if rl.IsKeyDown(.UP) {
+				if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) {
 					dir += {0,-1}
 					P.dir = .UP
 				}
-				if rl.IsKeyDown(.DOWN) {
+				if rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.S) {
 					dir += {0,1}
 					P.dir = .DOWN
 				}
-				if rl.IsKeyDown(.LEFT) {
+				if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) {
 					dir += {-1,0}
 					P.flip = true
 					P.dir = .SIDE
 				}
-				if rl.IsKeyDown(.RIGHT) {
+				if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) {
 					dir += {1,0}
 					P.flip = false
 					P.dir = .SIDE
