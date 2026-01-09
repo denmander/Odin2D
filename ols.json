@@ -1,0 +1,24 @@
+{
+    "collections": [
+    {
+    "name": "core",
+    "path": "C:/odin/core"
+    },
+    {
+    "name": "raylib",
+    "path": "C:/odin/vendor/raylib"
+    },
+    {
+    "name": "vendor",
+    "path": "C:/odin/vendor"
+    },
+    {
+    "name": "base",
+    "path":"C:/odin/base"
+    }
+    ],
+    "enable_document_symbols": true,
+    "enable_semantic_tokens": true,
+    "enable_hover": true,
+    "enable_snippets": true
+}
