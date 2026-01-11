@@ -13,7 +13,6 @@ Direction :: enum {
 	DOWN,
 	UP
 }
-
 Player :: struct {
 	position : rl.Vector2,
 	old_position : rl.Vector2,
@@ -105,6 +104,10 @@ main :: proc() {
 	rl.SetWindowPosition(50,50)
 	rl.SetWindowState({.WINDOW_RESIZABLE})
 	rl.SetTargetFPS(60)
+
+	grassSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\spring.png")
+	dirtSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\dirt.png")
+	waterSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\water - spring.png")
 
 	DT :: 1.0/60.0
 	accumulated_time : f32
@@ -209,7 +212,7 @@ main :: proc() {
 		draw_animation(current_anim, player_render_pos, int(P.dir), P.flip)
 		for wall in level.walls {	rl.DrawRectangleRec(wall_collider(wall),rl.RED)}
 		//rl.DrawCircleV(rl.GetMousePosition(),1,rl.RED)
-		rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
+		//rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
 
 		if rl.IsKeyPressed(.F2) {
 			editing = !editing
