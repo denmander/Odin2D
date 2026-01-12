@@ -111,9 +111,9 @@ main :: proc() {
 	P : Player = {
 		size = {50,50},
 		speed = 100}
-	player_collider := rl.Rectangle{
-		P.position.x,
-		P.position.y,
+		player_collider := rl.Rectangle{
+			P.position.x,
+			P.position.y,
 		10,
 		14,
 	}
@@ -141,58 +141,56 @@ main :: proc() {
 	} else {
 		append(&level.walls, rl.Vector2{-16,16})
 	}
-
+		
 	editing := false
-
 	for !rl.WindowShouldClose() {
-
 		accumulated_time += rl.GetFrameTime() //Fixed timestep
 		for accumulated_time >= DT {
 			dir : rl.Vector2
 			P.old_position = P.position
-				if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) {
-					dir += {0,-1}
-					P.dir = .UP
+			if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) {
+				dir += {0,-1}
+				P.dir = .UP
+			}
+			if rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.S) {
+				dir += {0,1}
+				P.dir = .DOWN
+			}
+			if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) {
+				dir += {-1,0}
+				P.flip = true
+				P.dir = .SIDE
+			}
+			if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) {
+				dir += {1,0}
+				P.flip = false
+				P.dir = .SIDE
+			}
+			if dir != {0,0} {
+				P.velocity = math.lerp(P.velocity, dir * P.speed, f32(0.8))
+				if current_anim.name != .walk {current_anim = player_walk}
+			} else {
+				P.velocity = math.lerp(P.velocity, rl.Vector2{0,0}, f32(0.8))
+				if current_anim.name != .idle {current_anim = player_idle}
+			}
+			player_collider.x = P.position.x + P.velocity.x * DT - player_collider.width/2
+			player_collider.y = P.position.y + P.velocity.y * DT - player_collider.height
+			
+			for wall in level.walls {
+				wall_col := wall_collider(wall)
+				if rl.CheckCollisionRecs(player_collider,wall_col) {
+					if P.position.x + player_collider.width/2 < wall_col.x && P.velocity.x > 0 {P.velocity.x = 0}
+					if P.position.x - player_collider.width/2 > wall_col.x + wall_col.width && P.velocity.x < 0 {P.velocity.x = 0}
+					if P.position.y < wall_col.y && P.velocity.y > 0 {P.velocity.y = 0}
+					if P.position.y - player_collider.height > wall_col.y + wall_col.height && P.velocity.y < 0 {P.velocity.y = 0}
 				}
-				if rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.S) {
-					dir += {0,1}
-					P.dir = .DOWN
-				}
-				if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) {
-					dir += {-1,0}
-					P.flip = true
-					P.dir = .SIDE
-				}
-				if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) {
-					dir += {1,0}
-					P.flip = false
-					P.dir = .SIDE
-				}
-				if dir != {0,0} {
-					P.velocity = math.lerp(P.velocity, dir * P.speed, f32(0.8))
-					if current_anim.name != .walk {current_anim = player_walk}
-				} else {
-					P.velocity = math.lerp(P.velocity, rl.Vector2{0,0}, f32(0.8))
-					if current_anim.name != .idle {current_anim = player_idle}
-				}
-				player_collider.x = P.position.x + P.velocity.x * DT - player_collider.width/2
-				player_collider.y = P.position.y + P.velocity.y * DT - player_collider.height
-				
-				for wall in level.walls {
-					wall_col := wall_collider(wall)
-					if rl.CheckCollisionRecs(player_collider,wall_col) {
-						if P.position.x + player_collider.width/2 < wall_col.x && P.velocity.x > 0 {P.velocity.x = 0}
-						if P.position.x - player_collider.width/2 > wall_col.x + wall_col.width && P.velocity.x < 0 {P.velocity.x = 0}
-						if P.position.y < wall_col.y && P.velocity.y > 0 {P.velocity.y = 0}
-						if P.position.y - player_collider.height > wall_col.y + wall_col.height && P.velocity.y < 0 {P.velocity.y = 0}
-					}
-				}
+			}
 			P.position += P.velocity * DT
 			accumulated_time -= DT
 		}
 		blend := accumulated_time / DT
 		player_render_pos := math.lerp(P.old_position, P.position, blend)
-
+		
 		rl.BeginDrawing()
 		rl.ClearBackground({110, 184, 168, 255})
 		
@@ -204,11 +202,11 @@ main :: proc() {
 			offset = {f32(rl.GetScreenWidth()/2),screen_height/2},
 			target = P.position,
 		}
-
+		
 		rl.BeginMode2D(camera)
 		draw_animation(current_anim, player_render_pos, int(P.dir), P.flip)
 		for wall in level.walls {	rl.DrawRectangleRec(wall_collider(wall),rl.RED)}
-		//rl.DrawCircleV(rl.GetMousePosition(),1,rl.RED)
+		rl.DrawCircleV(rl.GetMousePosition(),1,rl.RED)
 		rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
 
 		if rl.IsKeyPressed(.F2) {
