@@ -76,6 +76,11 @@ PixelWindowHeight :: 180
 Level :: struct {
 	walls: [dynamic]rl.Vector2,
 }
+TileMap :: struct{
+	columns : i32,
+	rows : i32,
+	tile_size : i32,
+}
 
 wall_collider :: proc(pos: rl.Vector2) -> rl.Rectangle {
 	return {
@@ -83,6 +88,7 @@ wall_collider :: proc(pos: rl.Vector2) -> rl.Rectangle {
 		96,16,
 	}
 }
+
 
 main :: proc() {
 	track :mem.Tracking_Allocator
@@ -104,6 +110,21 @@ main :: proc() {
 	rl.SetWindowPosition(50,50)
 	rl.SetWindowState({.WINDOW_RESIZABLE})
 	rl.SetTargetFPS(60)
+
+	rows : i32 = 9
+	columns : i32 = 16
+	tile_size : i32 = 16
+	tile_map : [9][16]int = {
+		{1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1},
+		{0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1},
+		{1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1},
+		{1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1},
+		{1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1},
+		{1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1},
+	}
 
 	grassSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\spring.png")
 	dirtSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\dirt.png")
@@ -207,8 +228,16 @@ main :: proc() {
 		}
 		
 		rl.BeginMode2D(camera)
-		draw_animation(current_anim, player_render_pos, int(P.dir), P.flip)
+		for y : i32 =0; y<rows; y += 1 {
+			for x : i32 =0; x<columns; x += 1 {
+				if tile_map[y][x] == 1 {
+					rl.DrawRectangle(x*tile_size,y*tile_size,tile_size,tile_size,{150, 200, 200, 255})
+				}
+				else {rl.DrawRectangle(x*tile_size,y*tile_size,tile_size,tile_size,rl.LIME)}
+			}
+		}
 		for wall in level.walls {	rl.DrawRectangleRec(wall_collider(wall),rl.RED)}
+		draw_animation(current_anim, player_render_pos, int(P.dir), P.flip)
 		//rl.DrawCircleV(rl.GetMousePosition(),1,rl.RED)
 		//rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
 
