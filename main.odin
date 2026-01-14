@@ -17,7 +17,6 @@ Player :: struct {
 	position : rl.Vector2,
 	old_position : rl.Vector2,
 	velocity : rl.Vector2,
-	size : rl.Vector2,
 	speed : f32,
 	dir : Direction,
 	flip: bool
@@ -68,7 +67,7 @@ draw_animation :: proc(a: Animation, pos: rl.Vector2, dir_index: int, flip:bool)
 		width = a_width / f32(a.frame_count),
 		height = a_height / f32(a.rows)
 	}
-	rl.DrawTexturePro(a.texture,source,dest, {dest.width/2,dest.height},0,rl.WHITE)
+	rl.DrawTexturePro(a.texture, source, dest, {dest.width/2.0,dest.height},0,rl.WHITE)
 }
 
 PixelWindowHeight :: 180
@@ -88,7 +87,6 @@ wall_collider :: proc(pos: rl.Vector2) -> rl.Rectangle {
 		96,16,
 	}
 }
-
 
 main :: proc() {
 	track :mem.Tracking_Allocator
@@ -133,13 +131,12 @@ main :: proc() {
 	DT :: 1.0/60.0
 	accumulated_time : f32
 	P : Player = {
-		size = {50,50},
 		speed = 100}
 		player_collider := rl.Rectangle{
 			P.position.x,
 			P.position.y,
-		10,
-		14,
+			10,
+			6,
 	}
 	player_walk := Animation {
 		texture = rl.LoadTexture("assets\\character\\walk.png"),
@@ -197,7 +194,7 @@ main :: proc() {
 				P.velocity = math.lerp(P.velocity, rl.Vector2{0,0}, f32(0.8))
 				if current_anim.name != .idle {current_anim = player_idle}
 			}
-			player_collider.x = P.position.x + P.velocity.x * DT - player_collider.width/2
+			player_collider.x = P.position.x + P.velocity.x * DT - player_collider.width/2.0
 			player_collider.y = P.position.y + P.velocity.y * DT - player_collider.height
 			
 			for wall in level.walls {
@@ -210,6 +207,8 @@ main :: proc() {
 				}
 			}
 			P.position += P.velocity * DT
+			player_collider.x = P.position.x - player_collider.width/2.0
+			player_collider.y = P.position.y - player_collider.height
 			accumulated_time -= DT
 		}
 		blend := accumulated_time / DT
@@ -237,9 +236,9 @@ main :: proc() {
 			}
 		}
 		for wall in level.walls {	rl.DrawRectangleRec(wall_collider(wall),rl.RED)}
-		draw_animation(current_anim, player_render_pos, int(P.dir), P.flip)
-		//rl.DrawCircleV(rl.GetMousePosition(),1,rl.RED)
-		//rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
+		draw_animation(current_anim, P.position, int(P.dir), P.flip)
+		rl.DrawCircleV(P.position,1,rl.RED)
+		rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
 
 		if rl.IsKeyPressed(.F2) {
 			editing = !editing
