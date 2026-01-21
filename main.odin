@@ -17,6 +17,7 @@ Player :: struct {
 	position : rl.Vector2,
 	old_position : rl.Vector2,
 	velocity : rl.Vector2,
+	TilemapX, TilemapY : int,
 	speed : f32,
 	dir : Direction,
 	flip: bool
@@ -76,17 +77,18 @@ Level :: struct {
 	walls: [dynamic]rl.Vector2,
 }
 TileMap :: struct{		//Represents a tilemap as a Matrix of size [X x Y x Z]
+	tiles : []u32		//Pointer address to the array of tilemap data
+}
+
+World :: struct{
 	countX : int,  		//Columns of the tilemap
 	countY : int,		//Rows of the tilemap
 	countZ: int,		//Depths of the tilemap
 	tile_width : int,	//Dimension X of the tiles
 	tile_height : int, 	//Dimension Y of the tiles
-	tiles : []u32		//Pointer address to the array of tilemap data
-}
 
-World :: struct{
-	tileMapCountX : int,
-	tileMapCountY : int,
+	tileMapCountX : int,//number X of the TileMaps array
+	tileMapCountY : int,//number Y of the TileMaps array
 	tileMaps : []TileMap
 }
 
@@ -103,7 +105,7 @@ truncatef32toint :: proc(value: f32) -> int {
 
 getTileMap :: proc(world: ^World, tileMapX, tileMapY: int) -> ^TileMap{
 	tile_map : ^TileMap
-	if  tileMapX >= 0 && tileMapX < world.tileMapCountX &&
+	if tileMapX >= 0 && tileMapX < world.tileMapCountX &&
 		tileMapY >= 0 && tileMapY < world.tileMapCountY 
 	{
 		tile_map = &world.tileMaps[tileMapY * world.tileMapCountX + tileMapX]
@@ -111,39 +113,53 @@ getTileMap :: proc(world: ^World, tileMapX, tileMapY: int) -> ^TileMap{
 	return tile_map
 }
 
-getTileValue :: proc(tile_map: ^TileMap, tileX, tileY: int) -> u32{
-	tile_map_value : u32 = tile_map.tiles[tileY * tile_map.countX + tileX]
+getTileValue :: proc(world: ^World, tile_map: ^TileMap, tileX, tileY: int) -> u32{
+	tile_map_value : u32 = tile_map.tiles[tileY * world.countX + tileX]
 	return tile_map_value
 }
 
-isTileEmpty :: proc(tile_map: ^TileMap, testX, testY: f32) -> bool {
-	tileX : int = truncatef32toint(testX) / tile_map.tile_width
-	tileY : int = truncatef32toint(testY) / tile_map.tile_height
+isTileEmpty :: proc(world: ^World, tile_map: ^TileMap, testX, testY: int) -> bool {
 	empty : bool = false
-	if tileX >= 0 && tileX < tile_map.countX &&
-	   tileY >= 0 && tileY < tile_map.countY {
-		tile_map_value := tile_map.tiles[tileY * tile_map.countX + tileX]
-		empty = getTileValue(tile_map, tileX, tileY) == 0
+	if tile_map != nil{
+		if testX >= 0 && testX < world.countX &&
+		   testY >= 0 && testY < world.countY 
+		{
+			tile_map_value := tile_map.tiles[testY * world.countX + testX]
+			empty = getTileValue(world, tile_map, testX, testY) == 0
 		}
-	return empty
-}
-
-isWorldPointEmpty :: proc(world: ^World, TileMapX, TileMapY: int, testX, testY: f32) -> bool {
-	empty : bool = false
-	tile_map : ^TileMap = getTileMap(world, TileMapX, TileMapY)
-	if tile_map != nil {
-		tileX : int = truncatef32toint(testX) / tile_map.tile_width
-		tileY : int = truncatef32toint(testY) / tile_map.tile_height
-		if tileX >= 0 && tileX < tile_map.countX &&
-		   tileY >= 0 && tileY < tile_map.countY {
-			tile_map_value := tile_map.tiles[tileY * tile_map.countX + tileX]
-			empty = getTileValue(tile_map, tileX, tileY) == 0
-			}
 	}
 	return empty
 }
 
+isWorldPointEmpty :: proc(world: ^World, TestTileMapX, TestTileMapY: int, testX, testY: f32) -> bool {
+	empty : bool = false
+	TestTileMapX := TestTileMapX
+	TestTileMapY := TestTileMapY
+	TestTileX : int = truncatef32toint(testX) / world.tile_width
+	TestTileY : int = truncatef32toint(testY) / world.tile_height
+	if TestTileX < 0 {
+		TestTileX = world.countX + TestTileX
+		TestTileMapX -= 1
+	}
+	if TestTileY < 0 {
+		TestTileY = world.countY + TestTileY
+		TestTileMapY -= 1
+	}
+	if TestTileX >= world.countX {
+		TestTileX = world.countX - TestTileX
+		TestTileMapX += 1
+	}
+	if TestTileY >= world.countY {
+		TestTileY = world.countY - TestTileY
+		TestTileMapY += 1
+	}
+	Tile_map : ^TileMap = getTileMap(world, TestTileMapX, TestTileMapY)
+	empty = isTileEmpty(world, Tile_map, TestTileX, TestTileY)
+	return empty
+}
+
 main :: proc() {
+	
 	track :mem.Tracking_Allocator
 	mem.tracking_allocator_init(&track, context.allocator)
 	context.allocator = mem.tracking_allocator(&track)
@@ -157,18 +173,14 @@ main :: proc() {
 		}
 		mem.tracking_allocator_destroy(&track)
 	}
-
 	rl.SetConfigFlags({.VSYNC_HINT})
 	rl.InitWindow(1280,720,"Game")
 	rl.SetWindowPosition(50,50)
 	rl.SetWindowState({.WINDOW_RESIZABLE})
 	rl.SetTargetFPS(60)
+
 	tile_maps : [4]TileMap
 	tile_maps[0] = {
-		countX = 16,
-		countY = 9,
-		tile_height = 16,
-		tile_width = 16,
 		tiles ={1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 				1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 				1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1,
@@ -180,40 +192,28 @@ main :: proc() {
 				1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1},
 	}
 	tile_maps[1] = {
-		countX = 16,
-		countY = 9,
-		tile_height = 16,
-		tile_width = 16,
-		tiles ={1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1,
+		tiles ={1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 				1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
 				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1,
 				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-				1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 				1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1,
 				1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-				1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-	}
-	tile_maps[2] = {
-		countX = 16,
-		countY = 9,
-		tile_height = 16,
-		tile_width = 16,
-		tiles ={1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-				0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
 				1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1},
 	}
+	tile_maps[2] = {
+		tiles ={1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
+				1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+	}
 	tile_maps[3] = {
-		countX = 16,
-		countY = 9,
-		tile_height = 16,
-		tile_width = 16,
 		tiles ={1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1,
 				1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
 				1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
@@ -224,14 +224,22 @@ main :: proc() {
 				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 				1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
 	}
-	tilemap : ^TileMap = &tile_maps[0]
-	world : World
+	world : World = {
+		countX = 16,
+		countY = 9,
+		tile_height = 16,
+		tile_width = 16,
+		tileMapCountX = 2,
+		tileMapCountY = 2,
+	}
 	world.tileMaps = tile_maps[0:4]
-
+	tilemap : ^TileMap = getTileMap(&world,0,0)
+	fmt.print(tilemap, "\n")
+	assert(tilemap != nil, "Tilemap Loaded Correctly")
+	
 	grassSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\spring.png")
 	dirtSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\dirt.png")
 	waterSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\water - spring.png")
-
 	DT :: 1.0/60.0
 	accumulated_time : f32
 	P : Player = {
@@ -314,9 +322,9 @@ main :: proc() {
 			}
 			new_player_x := P.position.x + P.velocity.x * DT
 			new_player_y := P.position.y + P.velocity.y * DT
-			if  isTileEmpty(tilemap, new_player_x - 0.5*player_collider.width, new_player_y) &&
-				isTileEmpty(tilemap, new_player_x + 0.5*player_collider.width, new_player_y) &&
-				isTileEmpty(tilemap, new_player_x, new_player_y){
+			if  isWorldPointEmpty(&world, P.TilemapX, P.TilemapY, new_player_x - 0.5*player_collider.width, new_player_y) &&
+				isWorldPointEmpty(&world, P.TilemapX, P.TilemapY, new_player_x + 0.5*player_collider.width, new_player_y) &&
+				isWorldPointEmpty(&world, P.TilemapX, P.TilemapY, new_player_x, new_player_y){
 				P.position += P.velocity * DT
 			}
 			player_collider.x = P.position.x - player_collider.width/2.0
@@ -335,22 +343,22 @@ main :: proc() {
 		camera := rl.Camera2D {
 			zoom = screen_height/PixelWindowHeight,
 			offset = {f32(rl.GetScreenWidth()/2),screen_height/2},
-			target = {f32(tilemap.countX*(tilemap.tile_width)/2),f32(tilemap.countY*tilemap.tile_height/2)}
+			target = {f32(world.countX*(world.tile_width)/2),f32(world.countY*world.tile_height/2)}
 		}
 		
 		rl.BeginMode2D(camera)
-		for row :=0; row<tilemap.countY; row += 1 {
-			for column :=0; column<tilemap.countX; column += 1 {
-				tileID := getTileValue(tilemap, column, row)
-				if tilemap.tiles[row*tilemap.countX+column] == 1 {
-					rl.DrawRectangle(i32(column*tilemap.tile_width),i32(row*tilemap.tile_height),i32(tilemap.tile_width),i32(tilemap.tile_height),{150, 200, 200, 255})
+		for row :=0; row<world.countY; row += 1 {
+			for column :=0; column<world.countX; column += 1 {
+				tileID := getTileValue(&world, tilemap, column, row)
+				if tilemap.tiles[row*world.countX+column] == 1 {
+					rl.DrawRectangle(i32(column*world.tile_width),i32(row*world.tile_height),i32(world.tile_width),i32(world.tile_height),{150, 200, 200, 255})
 				}
-				else {rl.DrawRectangle(i32(column*tilemap.tile_width),i32(row*tilemap.tile_height),i32(tilemap.tile_width),i32(tilemap.tile_height),rl.LIME)}
+				else {rl.DrawRectangle(i32(column*world.tile_width),i32(row*world.tile_height),i32(world.tile_width),i32(world.tile_height),rl.LIME)}
 			}
 		}
 		for wall in level.walls {	rl.DrawRectangleRec(wall_collider(wall),rl.RED)}
 		draw_animation(current_anim, P.position, int(P.dir), P.flip)
-		rl.DrawCircleV({f32(tilemap.countX*(tilemap.tile_width)/2),f32(tilemap.countY*tilemap.tile_height/2)},1,rl.RED)
+		rl.DrawCircleV({f32(world.countX*(world.tile_width)/2),f32(world.countY*world.tile_height/2)},1,rl.RED)
 		rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
 
 		if rl.IsKeyPressed(.F2) {
