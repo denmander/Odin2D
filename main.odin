@@ -86,10 +86,22 @@ World :: struct{
 	countZ: int,		//Depths of the tilemap
 	tile_width : int,	//Dimension X of the tiles
 	tile_height : int, 	//Dimension Y of the tiles
-
+	upperLeftX : f32,
+	upperLeftY : f32,	//Origin
+	
 	tileMapCountX : int,//number X of the TileMaps array
 	tileMapCountY : int,//number Y of the TileMaps array
 	tileMaps : []TileMap
+}
+
+CanonicalPosition :: struct{
+	TileMapX, TileMapY: int,
+	TileX, TileY: int,
+	X, Y: f32 //Tile relative X and Y 
+}
+RawPosition :: struct{
+	TileMapX, TileMapY: int,
+	X, Y: f32 //Tilemap relative X and Y
 }
 
 wall_collider :: proc(pos: rl.Vector2) -> rl.Rectangle {
@@ -99,6 +111,9 @@ wall_collider :: proc(pos: rl.Vector2) -> rl.Rectangle {
 	}
 }
 
+floorf32toint :: proc(value: f32) -> int {
+	return int(math.floor(value))
+}
 truncatef32toint :: proc(value: f32) -> int {
 	return int(value + 0.5)
 }
@@ -131,30 +146,48 @@ isTileEmpty :: proc(world: ^World, tile_map: ^TileMap, testX, testY: int) -> boo
 	return empty
 }
 
-isWorldPointEmpty :: proc(world: ^World, TestTileMapX, TestTileMapY: int, testX, testY: f32) -> bool {
+getCanonicalPosition :: proc (world : ^World, pos: RawPosition) -> CanonicalPosition {
+	Result : CanonicalPosition
+	Result.TileMapX = pos.TileMapX
+	Result.TileMapY = pos.TileMapY
+
+	X := pos.X - world.upperLeftX
+	Y := pos.Y - world.upperLeftY
+	Result.TileX = floorf32toint(X) / world.tile_width
+	Result.TileY = floorf32toint(Y) / world.tile_height
+
+	Result.X = X - f32(Result.TileX*world.tile_width) //Tile relative X and Y
+	Result.Y = Y - f32(Result.TileY*world.tile_height)
+
+	assert(Result.X >= 0)
+	assert(Result.Y >= 0)
+	assert(Result.X < f32(world.tile_width))
+	assert(Result.Y < f32(world.tile_height))
+
+	if Result.TileX < 0 {
+		Result.TileX = world.countX + Result.TileX
+		Result.TileMapX -= 1
+	}
+	if Result.TileY < 0 {
+		Result.TileY = world.countY + Result.TileY
+		Result.TileMapY -= 1
+	}
+	if Result.TileX >= world.countX {
+		Result.TileX = world.countX - Result.TileX
+		Result.TileMapX += 1
+	}
+	if Result.TileY >= world.countY {
+		Result.TileY = world.countY - Result.TileY
+		Result.TileMapY += 1
+	}
+	return Result
+}
+
+isWorldPointEmpty :: proc(world: ^World, TestPos: RawPosition) -> bool {
 	empty : bool = false
-	TestTileMapX := TestTileMapX
-	TestTileMapY := TestTileMapY
-	TestTileX : int = truncatef32toint(testX) / world.tile_width
-	TestTileY : int = truncatef32toint(testY) / world.tile_height
-	if TestTileX < 0 {
-		TestTileX = world.countX + TestTileX
-		TestTileMapX -= 1
-	}
-	if TestTileY < 0 {
-		TestTileY = world.countY + TestTileY
-		TestTileMapY -= 1
-	}
-	if TestTileX >= world.countX {
-		TestTileX = world.countX - TestTileX
-		TestTileMapX += 1
-	}
-	if TestTileY >= world.countY {
-		TestTileY = world.countY - TestTileY
-		TestTileMapY += 1
-	}
-	Tile_map : ^TileMap = getTileMap(world, TestTileMapX, TestTileMapY)
-	empty = isTileEmpty(world, Tile_map, TestTileX, TestTileY)
+	canPos := getCanonicalPosition(world, TestPos)
+	tile_map : ^TileMap = getTileMap(world, canPos.TileMapX, canPos.TileMapY)
+	empty = isTileEmpty(world, tile_map, canPos.TileX, canPos.TileY)
 	return empty
 }
 
@@ -233,9 +266,8 @@ main :: proc() {
 		tileMapCountY = 2,
 	}
 	world.tileMaps = tile_maps[0:4]
-	tilemap : ^TileMap = getTileMap(&world,0,0)
-	fmt.print(tilemap, "\n")
-	assert(tilemap != nil, "Tilemap Loaded Correctly")
+	tilemap : ^TileMap = getTileMap(&world,1,1)
+	assert(tilemap != nil, "Tilemap Loaded Incorrectly")
 	
 	grassSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\spring.png")
 	dirtSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\dirt.png")
@@ -244,7 +276,9 @@ main :: proc() {
 	accumulated_time : f32
 	P : Player = {
 		speed = 100,
-		position = {64,64}
+		position = {100,64},
+		TilemapX = 1,
+		TilemapY = 1
 	}
 	player_collider := rl.Rectangle{
 		P.position.x,
@@ -322,10 +356,22 @@ main :: proc() {
 			}
 			new_player_x := P.position.x + P.velocity.x * DT
 			new_player_y := P.position.y + P.velocity.y * DT
-			if  isWorldPointEmpty(&world, P.TilemapX, P.TilemapY, new_player_x - 0.5*player_collider.width, new_player_y) &&
-				isWorldPointEmpty(&world, P.TilemapX, P.TilemapY, new_player_x + 0.5*player_collider.width, new_player_y) &&
-				isWorldPointEmpty(&world, P.TilemapX, P.TilemapY, new_player_x, new_player_y){
-				P.position += P.velocity * DT
+			PlayerPos : RawPosition = {
+				P.TilemapX, P.TilemapY, new_player_x, new_player_y
+			}
+			PlayerLeft : RawPosition = PlayerPos
+			PlayerLeft.X -= 0.5*player_collider.width
+			PlayerRight : RawPosition = PlayerPos
+			PlayerRight.X += 0.5*player_collider.width
+
+			if  isWorldPointEmpty(&world, PlayerPos) &&
+				isWorldPointEmpty(&world, PlayerLeft) &&
+				isWorldPointEmpty(&world, PlayerRight){
+				CanPos : CanonicalPosition = getCanonicalPosition(&world, PlayerPos)
+				P.TilemapX = CanPos.TileMapX
+				P.TilemapY = CanPos.TileMapY
+				P.position = {f32(world.tile_width*CanPos.TileX) + CanPos.X,
+					f32(world.tile_width*CanPos.TileY) + CanPos.Y}
 			}
 			player_collider.x = P.position.x - player_collider.width/2.0
 			player_collider.y = P.position.y - player_collider.height
@@ -347,6 +393,7 @@ main :: proc() {
 		}
 		
 		rl.BeginMode2D(camera)
+		tilemap = getTileMap( &world, P.TilemapX, P.TilemapY)
 		for row :=0; row<world.countY; row += 1 {
 			for column :=0; column<world.countX; column += 1 {
 				tileID := getTileValue(&world, tilemap, column, row)
