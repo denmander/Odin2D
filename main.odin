@@ -153,8 +153,8 @@ getCanonicalPosition :: proc (world : ^World, pos: RawPosition) -> CanonicalPosi
 
 	X := pos.X - world.upperLeftX
 	Y := pos.Y - world.upperLeftY
-	Result.TileX = floorf32toint(X) / world.tile_width
-	Result.TileY = floorf32toint(Y) / world.tile_height
+	Result.TileX = floorf32toint(X / f32(world.tile_width))
+	Result.TileY = floorf32toint(Y / f32(world.tile_height))
 
 	Result.X = X - f32(Result.TileX*world.tile_width) //Tile relative X and Y
 	Result.Y = Y - f32(Result.TileY*world.tile_height)
@@ -266,7 +266,7 @@ main :: proc() {
 		tileMapCountY = 2,
 	}
 	world.tileMaps = tile_maps[0:4]
-	tilemap : ^TileMap = getTileMap(&world,1,1)
+	tilemap : ^TileMap = getTileMap(&world,0,0)
 	assert(tilemap != nil, "Tilemap Loaded Incorrectly")
 	
 	grassSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\spring.png")
@@ -278,7 +278,7 @@ main :: proc() {
 		speed = 100,
 		position = {100,64},
 		TilemapX = 1,
-		TilemapY = 1
+		TilemapY = 0
 	}
 	player_collider := rl.Rectangle{
 		P.position.x,
@@ -370,8 +370,8 @@ main :: proc() {
 				CanPos : CanonicalPosition = getCanonicalPosition(&world, PlayerPos)
 				P.TilemapX = CanPos.TileMapX
 				P.TilemapY = CanPos.TileMapY
-				P.position = {f32(world.tile_width*CanPos.TileX) + CanPos.X,
-					f32(world.tile_width*CanPos.TileY) + CanPos.Y}
+				P.position = {world.upperLeftX + f32(world.tile_width*CanPos.TileX) + CanPos.X,
+					world.upperLeftY + f32(world.tile_width*CanPos.TileY) + CanPos.Y}
 			}
 			player_collider.x = P.position.x - player_collider.width/2.0
 			player_collider.y = P.position.y - player_collider.height
