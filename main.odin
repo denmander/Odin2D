@@ -8,16 +8,20 @@ import "core:os"
 import "core:encoding/json"
 import rl "vendor:raylib"
 
+CanonicalPosition :: struct{
+	TileMapX, TileMapY: int,
+	TileX, TileY: int,
+	X, Y: f32 "Tile relative X and Y"
+}
 Direction :: enum {
 	SIDE,
 	DOWN,
 	UP
 }
 Player :: struct {
-	position : rl.Vector2,
-	old_position : rl.Vector2,
+	pos : CanonicalPosition,
+	old_pos : rl.Vector2,
 	velocity : rl.Vector2,
-	TilemapX, TilemapY : int,
 	speed : f32,
 	dir : Direction,
 	flip: bool
@@ -81,27 +85,17 @@ TileMap :: struct{		//Represents a tilemap as a Matrix of size [X x Y x Z]
 }
 
 World :: struct{
+	tileSideMeters: f32,//Size of a tile in metric
+	tileSidePixels: int,//Size of a tile in pixels
 	countX : int,  		//Columns of the tilemap
 	countY : int,		//Rows of the tilemap
 	countZ: int,		//Depths of the tilemap
-	tile_width : int,	//Dimension X of the tiles
-	tile_height : int, 	//Dimension Y of the tiles
 	upperLeftX : f32,
 	upperLeftY : f32,	//Origin
 	
 	tileMapCountX : int,//number X of the TileMaps array
 	tileMapCountY : int,//number Y of the TileMaps array
 	tileMaps : []TileMap
-}
-
-CanonicalPosition :: struct{
-	TileMapX, TileMapY: int,
-	TileX, TileY: int,
-	X, Y: f32 //Tile relative X and Y 
-}
-RawPosition :: struct{
-	TileMapX, TileMapY: int,
-	X, Y: f32 //Tilemap relative X and Y
 }
 
 wall_collider :: proc(pos: rl.Vector2) -> rl.Rectangle {
@@ -146,48 +140,37 @@ isTileEmpty :: proc(world: ^World, tile_map: ^TileMap, testX, testY: int) -> boo
 	return empty
 }
 
-getCanonicalPosition :: proc (world : ^World, pos: RawPosition) -> CanonicalPosition {
-	Result : CanonicalPosition
-	Result.TileMapX = pos.TileMapX
-	Result.TileMapY = pos.TileMapY
+canonicalizeCoord :: proc(world: ^World, TileCount : int, TileMap, Tile : ^int, TileRel: ^f32)	{
+	Offset : int = floorf32toint(TileRel^ / f32(world.tileSidePixels))
+	Tile^ += Offset
+	TileRel^ -= f32(Offset*world.tileSidePixels)
 
-	X := pos.X - world.upperLeftX
-	Y := pos.Y - world.upperLeftY
-	Result.TileX = floorf32toint(X / f32(world.tile_width))
-	Result.TileY = floorf32toint(Y / f32(world.tile_height))
+	assert(TileRel^ >= 0)
+	assert(TileRel^ < f32(world.tileSidePixels))
 
-	Result.X = X - f32(Result.TileX*world.tile_width) //Tile relative X and Y
-	Result.Y = Y - f32(Result.TileY*world.tile_height)
+	if Tile^ < 0 {
+		Tile^ = TileCount + Tile^
+		TileMap^ -= 1
+	}
+	if Tile^ >= TileCount {
+		Tile^ = Tile^ - TileCount
+		TileMap^ += 1
+	}
+}
 
-	assert(Result.X >= 0)
-	assert(Result.Y >= 0)
-	assert(Result.X < f32(world.tile_width))
-	assert(Result.Y < f32(world.tile_height))
+recanonicalizePosition :: proc (world : ^World, pos: CanonicalPosition) -> CanonicalPosition {
+	Result : CanonicalPosition = pos
 
-	if Result.TileX < 0 {
-		Result.TileX = world.countX + Result.TileX
-		Result.TileMapX -= 1
-	}
-	if Result.TileY < 0 {
-		Result.TileY = world.countY + Result.TileY
-		Result.TileMapY -= 1
-	}
-	if Result.TileX >= world.countX {
-		Result.TileX = world.countX - Result.TileX
-		Result.TileMapX += 1
-	}
-	if Result.TileY >= world.countY {
-		Result.TileY = world.countY - Result.TileY
-		Result.TileMapY += 1
-	}
+	canonicalizeCoord(world, world.countX, &Result.TileMapX, &Result.TileX, &Result.X)
+	canonicalizeCoord(world, world.countY, &Result.TileMapY, &Result.TileY, &Result.Y)
+
 	return Result
 }
 
-isWorldPointEmpty :: proc(world: ^World, TestPos: RawPosition) -> bool {
+isWorldPointEmpty :: proc(world: ^World, CanPos: CanonicalPosition) -> bool {
 	empty : bool = false
-	canPos := getCanonicalPosition(world, TestPos)
-	tile_map : ^TileMap = getTileMap(world, canPos.TileMapX, canPos.TileMapY)
-	empty = isTileEmpty(world, tile_map, canPos.TileX, canPos.TileY)
+	tile_map : ^TileMap = getTileMap(world, CanPos.TileMapX, CanPos.TileMapY)
+	empty = isTileEmpty(world, tile_map, CanPos.TileX, CanPos.TileY)
 	return empty
 }
 
@@ -258,10 +241,10 @@ main :: proc() {
 				1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
 	}
 	world : World = {
+		tileSideMeters = 1.4,
+		tileSidePixels = 16,
 		countX = 16,
 		countY = 9,
-		tile_height = 16,
-		tile_width = 16,
 		tileMapCountX = 2,
 		tileMapCountY = 2,
 	}
@@ -276,13 +259,18 @@ main :: proc() {
 	accumulated_time : f32
 	P : Player = {
 		speed = 100,
-		position = {100,64},
-		TilemapX = 1,
-		TilemapY = 0
+		pos = CanonicalPosition{
+			TileMapX = 0,
+			TileMapY = 0,
+			TileX = 3,
+			TileY = 2,
+			X = 5.0,
+			Y = 5.0
+		}
 	}
 	player_collider := rl.Rectangle{
-		P.position.x,
-		P.position.y,
+		f32(world.tileSidePixels*P.pos.TileX) + P.pos.X,
+		f32(world.tileSidePixels*P.pos.TileY) + P.pos.Y,
 		10,
 		6,
 	}
@@ -316,7 +304,6 @@ main :: proc() {
 		accumulated_time += rl.GetFrameTime() //Fixed timestep
 		for accumulated_time >= DT {
 			dir : rl.Vector2
-			P.old_position = P.position
 			if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) {
 				dir += {0,-1}
 				P.dir = .UP
@@ -342,43 +329,40 @@ main :: proc() {
 				P.velocity = math.lerp(P.velocity, rl.Vector2{0,0}, f32(0.8))
 				if current_anim.name != .idle {current_anim = player_idle}
 			}
-			player_collider.x = P.position.x + P.velocity.x * DT - player_collider.width/2.0
-			player_collider.y = P.position.y + P.velocity.y * DT - player_collider.height
+			player_collider.x = f32(world.tileSidePixels*P.pos.TileX) + P.pos.X + P.velocity.x * DT - player_collider.width/2.0
+			player_collider.y = f32(world.tileSidePixels*P.pos.TileY) + P.pos.Y + P.velocity.y * DT - player_collider.height
 			
 			for wall in level.walls {
 				wall_col := wall_collider(wall)
 				if rl.CheckCollisionRecs(player_collider,wall_col) {
-					if P.position.x + player_collider.width/2 < wall_col.x && P.velocity.x > 0 {P.velocity.x = 0}
-					if P.position.x - player_collider.width/2 > wall_col.x + wall_col.width && P.velocity.x < 0 {P.velocity.x = 0}
-					if P.position.y < wall_col.y && P.velocity.y > 0 {P.velocity.y = 0}
-					if P.position.y - player_collider.height > wall_col.y + wall_col.height && P.velocity.y < 0 {P.velocity.y = 0}
+					if P.pos.X + player_collider.width/2 < wall_col.x && P.velocity.x > 0 {P.velocity.x = 0}
+					if P.pos.X - player_collider.width/2 > wall_col.x + wall_col.width && P.velocity.x < 0 {P.velocity.x = 0}
+					if P.pos.Y < wall_col.y && P.velocity.y > 0 {P.velocity.y = 0}
+					if P.pos.Y - player_collider.height > wall_col.y + wall_col.height && P.velocity.y < 0 {P.velocity.y = 0}
 				}
 			}
-			new_player_x := P.position.x + P.velocity.x * DT
-			new_player_y := P.position.y + P.velocity.y * DT
-			PlayerPos : RawPosition = {
-				P.TilemapX, P.TilemapY, new_player_x, new_player_y
-			}
-			PlayerLeft : RawPosition = PlayerPos
+			new_player_pos : CanonicalPosition = P.pos
+			new_player_pos.X += P.velocity.x * DT
+			new_player_pos.Y += P.velocity.y * DT
+			new_player_pos = recanonicalizePosition(&world, new_player_pos)
+			PlayerLeft : CanonicalPosition = new_player_pos
 			PlayerLeft.X -= 0.5*player_collider.width
-			PlayerRight : RawPosition = PlayerPos
+			PlayerLeft = recanonicalizePosition(&world, PlayerLeft)
+			PlayerRight : CanonicalPosition = new_player_pos
 			PlayerRight.X += 0.5*player_collider.width
+			PlayerRight = recanonicalizePosition(&world, PlayerRight)
 
-			if  isWorldPointEmpty(&world, PlayerPos) &&
+			if  isWorldPointEmpty(&world, new_player_pos) &&
 				isWorldPointEmpty(&world, PlayerLeft) &&
 				isWorldPointEmpty(&world, PlayerRight){
-				CanPos : CanonicalPosition = getCanonicalPosition(&world, PlayerPos)
-				P.TilemapX = CanPos.TileMapX
-				P.TilemapY = CanPos.TileMapY
-				P.position = {world.upperLeftX + f32(world.tile_width*CanPos.TileX) + CanPos.X,
-					world.upperLeftY + f32(world.tile_width*CanPos.TileY) + CanPos.Y}
+					P.pos = new_player_pos
 			}
-			player_collider.x = P.position.x - player_collider.width/2.0
-			player_collider.y = P.position.y - player_collider.height
+			player_collider.x = f32(world.tileSidePixels*P.pos.TileX) + P.pos.X - player_collider.width/2.0
+			player_collider.y = f32(world.tileSidePixels*P.pos.TileY) + P.pos.Y - player_collider.height
 			accumulated_time -= DT
 		}
 		blend := accumulated_time / DT
-		player_render_pos := math.lerp(P.old_position, P.position, blend)
+		//player_render_pos := math.lerp(P.old_pos, P.pos, blend)
 		
 		rl.BeginDrawing()
 		rl.ClearBackground({110, 184, 168, 255})
@@ -389,23 +373,24 @@ main :: proc() {
 		camera := rl.Camera2D {
 			zoom = screen_height/PixelWindowHeight,
 			offset = {f32(rl.GetScreenWidth()/2),screen_height/2},
-			target = {f32(world.countX*(world.tile_width)/2),f32(world.countY*world.tile_height/2)}
+			target = {f32(world.countX*(world.tileSidePixels)/2),f32(world.countY*world.tileSidePixels/2)}
 		}
 		
 		rl.BeginMode2D(camera)
-		tilemap = getTileMap( &world, P.TilemapX, P.TilemapY)
+		tilemap = getTileMap( &world, P.pos.TileMapX, P.pos.TileMapY)
 		for row :=0; row<world.countY; row += 1 {
 			for column :=0; column<world.countX; column += 1 {
 				tileID := getTileValue(&world, tilemap, column, row)
 				if tilemap.tiles[row*world.countX+column] == 1 {
-					rl.DrawRectangle(i32(column*world.tile_width),i32(row*world.tile_height),i32(world.tile_width),i32(world.tile_height),{150, 200, 200, 255})
+					rl.DrawRectangle(i32(column*world.tileSidePixels),i32(row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),{150, 200, 200, 255})
 				}
-				else {rl.DrawRectangle(i32(column*world.tile_width),i32(row*world.tile_height),i32(world.tile_width),i32(world.tile_height),rl.LIME)}
+				else {rl.DrawRectangle(i32(column*world.tileSidePixels),i32(row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),rl.LIME)}
 			}
 		}
 		for wall in level.walls {	rl.DrawRectangleRec(wall_collider(wall),rl.RED)}
-		draw_animation(current_anim, P.position, int(P.dir), P.flip)
-		rl.DrawCircleV({f32(world.countX*(world.tile_width)/2),f32(world.countY*world.tile_height/2)},1,rl.RED)
+		draw_animation(current_anim, {world.upperLeftX + f32(world.tileSidePixels*P.pos.TileX) + P.pos.X,
+									  world.upperLeftY + f32(world.tileSidePixels*P.pos.TileY) + P.pos.Y}, int(P.dir), P.flip)
+		rl.DrawCircleV({f32(world.countX*(world.tileSidePixels)/2),f32(world.countY*world.tileSidePixels/2)},1,rl.RED)
 		rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
 
 		if rl.IsKeyPressed(.F2) {
