@@ -87,6 +87,7 @@ TileMap :: struct{		//Represents a tilemap as a Matrix of size [X x Y x Z]
 World :: struct{
 	tileSideMeters: f32,//Size of a tile in metric
 	tileSidePixels: int,//Size of a tile in pixels
+	metersToPixels: f32,
 	countX : int,  		//Columns of the tilemap
 	countY : int,		//Rows of the tilemap
 	countZ: int,		//Depths of the tilemap
@@ -141,12 +142,14 @@ isTileEmpty :: proc(world: ^World, tile_map: ^TileMap, testX, testY: int) -> boo
 }
 
 canonicalizeCoord :: proc(world: ^World, TileCount : int, TileMap, Tile : ^int, TileRel: ^f32)	{
-	Offset : int = floorf32toint(TileRel^ / f32(world.tileSidePixels))
+	// divide/multiply method can round back to the same tile in an edge case
+	// Bounds checking to prevent wrapping?
+	Offset : int = floorf32toint(TileRel^ / f32(world.tileSideMeters))
 	Tile^ += Offset
-	TileRel^ -= f32(Offset*world.tileSidePixels)
+	TileRel^ -= f32(Offset)*world.tileSideMeters
 
 	assert(TileRel^ >= 0)
-	assert(TileRel^ < f32(world.tileSidePixels))
+	assert(TileRel^ < f32(world.tileSideMeters))
 
 	if Tile^ < 0 {
 		Tile^ = TileCount + Tile^
@@ -198,13 +201,13 @@ main :: proc() {
 	tile_maps : [4]TileMap
 	tile_maps[0] = {
 		tiles ={1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-				1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-				1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1,
-				1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1,
-				1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0,
-				1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
-				1, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 1,
-				1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1,
+				1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1,
 				1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1},
 	}
 	tile_maps[1] = {
@@ -248,6 +251,7 @@ main :: proc() {
 		tileMapCountX = 2,
 		tileMapCountY = 2,
 	}
+	world.metersToPixels = f32(world.tileSidePixels) / world.tileSideMeters
 	world.tileMaps = tile_maps[0:4]
 	tilemap : ^TileMap = getTileMap(&world,0,0)
 	assert(tilemap != nil, "Tilemap Loaded Incorrectly")
@@ -258,7 +262,7 @@ main :: proc() {
 	DT :: 1.0/60.0
 	accumulated_time : f32
 	P : Player = {
-		speed = 100,
+		speed = 2.0,
 		pos = CanonicalPosition{
 			TileMapX = 0,
 			TileMapY = 0,
@@ -269,8 +273,8 @@ main :: proc() {
 		}
 	}
 	player_collider := rl.Rectangle{
-		f32(world.tileSidePixels*P.pos.TileX) + P.pos.X,
-		f32(world.tileSidePixels*P.pos.TileY) + P.pos.Y,
+		world.tileSideMeters*world.metersToPixels*f32(P.pos.TileX) + P.pos.X,
+		world.tileSideMeters*world.metersToPixels*f32(P.pos.TileY) + P.pos.Y,
 		10,
 		6,
 	}
@@ -329,8 +333,8 @@ main :: proc() {
 				P.velocity = math.lerp(P.velocity, rl.Vector2{0,0}, f32(0.8))
 				if current_anim.name != .idle {current_anim = player_idle}
 			}
-			player_collider.x = f32(world.tileSidePixels*P.pos.TileX) + P.pos.X + P.velocity.x * DT - player_collider.width/2.0
-			player_collider.y = f32(world.tileSidePixels*P.pos.TileY) + P.pos.Y + P.velocity.y * DT - player_collider.height
+			player_collider.x = world.metersToPixels*(world.tileSideMeters*f32(P.pos.TileX) + P.pos.X + P.velocity.x) * DT - player_collider.width/2.0
+			player_collider.y = world.metersToPixels*(world.tileSideMeters*f32(P.pos.TileY) + P.pos.Y + P.velocity.y) * DT - player_collider.height
 			
 			for wall in level.walls {
 				wall_col := wall_collider(wall)
@@ -346,19 +350,18 @@ main :: proc() {
 			new_player_pos.Y += P.velocity.y * DT
 			new_player_pos = recanonicalizePosition(&world, new_player_pos)
 			PlayerLeft : CanonicalPosition = new_player_pos
-			PlayerLeft.X -= 0.5*player_collider.width
+			PlayerLeft.X -= 0.5*player_collider.width/world.metersToPixels
 			PlayerLeft = recanonicalizePosition(&world, PlayerLeft)
 			PlayerRight : CanonicalPosition = new_player_pos
-			PlayerRight.X += 0.5*player_collider.width
+			PlayerRight.X += 0.5*player_collider.width/world.metersToPixels
 			PlayerRight = recanonicalizePosition(&world, PlayerRight)
-
 			if  isWorldPointEmpty(&world, new_player_pos) &&
-				isWorldPointEmpty(&world, PlayerLeft) &&
-				isWorldPointEmpty(&world, PlayerRight){
-					P.pos = new_player_pos
+			isWorldPointEmpty(&world, PlayerLeft) &&
+			isWorldPointEmpty(&world, PlayerRight){
+				P.pos = new_player_pos
 			}
-			player_collider.x = f32(world.tileSidePixels*P.pos.TileX) + P.pos.X - player_collider.width/2.0
-			player_collider.y = f32(world.tileSidePixels*P.pos.TileY) + P.pos.Y - player_collider.height
+			player_collider.x = world.metersToPixels*(world.tileSideMeters*f32(P.pos.TileX) + P.pos.X) - player_collider.width/2.0
+			player_collider.y = world.metersToPixels*(world.tileSideMeters*f32(P.pos.TileY) + P.pos.Y) - player_collider.height
 			accumulated_time -= DT
 		}
 		blend := accumulated_time / DT
@@ -368,7 +371,7 @@ main :: proc() {
 		rl.ClearBackground({110, 184, 168, 255})
 		
 		update_animation(&current_anim)
-
+		
 		screen_height := f32(rl.GetScreenHeight())
 		camera := rl.Camera2D {
 			zoom = screen_height/PixelWindowHeight,
@@ -384,15 +387,20 @@ main :: proc() {
 				if tilemap.tiles[row*world.countX+column] == 1 {
 					rl.DrawRectangle(i32(column*world.tileSidePixels),i32(row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),{150, 200, 200, 255})
 				}
-				else {rl.DrawRectangle(i32(column*world.tileSidePixels),i32(row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),rl.LIME)}
+				else {
+					if column == P.pos.TileX && row == P.pos.TileY {
+						rl.DrawRectangle(i32(column*world.tileSidePixels),i32(row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),rl.BLACK)	
+					} else do rl.DrawRectangle(i32(column*world.tileSidePixels),i32(row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),rl.LIME)
+				}
 			}
 		}
 		for wall in level.walls {	rl.DrawRectangleRec(wall_collider(wall),rl.RED)}
-		draw_animation(current_anim, {world.upperLeftX + f32(world.tileSidePixels*P.pos.TileX) + P.pos.X,
-									  world.upperLeftY + f32(world.tileSidePixels*P.pos.TileY) + P.pos.Y}, int(P.dir), P.flip)
+		draw_animation(current_anim, {world.upperLeftX + f32(world.tileSidePixels*P.pos.TileX) + world.metersToPixels*P.pos.X,
+				world.upperLeftY + f32(world.tileSidePixels*P.pos.TileY) + world.metersToPixels*P.pos.Y}, int(P.dir), P.flip)
 		rl.DrawCircleV({f32(world.countX*(world.tileSidePixels)/2),f32(world.countY*world.tileSidePixels/2)},1,rl.RED)
 		rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
-
+		
+			
 		if rl.IsKeyPressed(.F2) {
 			editing = !editing
 		}
