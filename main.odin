@@ -8,9 +8,8 @@ import "core:os"
 import "core:encoding/json"
 import rl "vendor:raylib"
 
-CanonicalPosition :: struct{
-	TileMapX, TileMapY: int,
-	TileX, TileY: int,
+WorldPosition :: struct{
+	_TileX, _TileY: int,
 	X, Y: f32 "Tile relative X and Y"
 }
 Direction :: enum {
@@ -19,7 +18,7 @@ Direction :: enum {
 	UP
 }
 Player :: struct {
-	pos : CanonicalPosition,
+	pos : WorldPosition,
 	old_pos : rl.Vector2,
 	velocity : rl.Vector2,
 	speed : f32,
@@ -141,7 +140,7 @@ isTileEmpty :: proc(world: ^World, tile_map: ^TileMap, testX, testY: int) -> boo
 	return empty
 }
 
-canonicalizeCoord :: proc(world: ^World, TileCount : int, TileMap, Tile : ^int, TileRel: ^f32)	{
+canonicalizeCoord :: proc(world: ^World, Tile : ^int, TileRel: ^f32)	{
 	// divide/multiply method can round back to the same tile in an edge case
 	// Bounds checking to prevent wrapping?
 	Offset : int = floorf32toint(TileRel^ / f32(world.tileSideMeters))
@@ -150,27 +149,18 @@ canonicalizeCoord :: proc(world: ^World, TileCount : int, TileMap, Tile : ^int, 
 
 	assert(TileRel^ >= 0)
 	assert(TileRel^ < f32(world.tileSideMeters))
-
-	if Tile^ < 0 {
-		Tile^ = TileCount + Tile^
-		TileMap^ -= 1
-	}
-	if Tile^ >= TileCount {
-		Tile^ = Tile^ - TileCount
-		TileMap^ += 1
-	}
 }
 
-recanonicalizePosition :: proc (world : ^World, pos: CanonicalPosition) -> CanonicalPosition {
-	Result : CanonicalPosition = pos
+recanonicalizePosition :: proc (world : ^World, pos: WorldPosition) -> WorldPosition {
+	Result : WorldPosition = pos
 
-	canonicalizeCoord(world, world.countX, &Result.TileMapX, &Result.TileX, &Result.X)
-	canonicalizeCoord(world, world.countY, &Result.TileMapY, &Result.TileY, &Result.Y)
+	canonicalizeCoord(world, &Result.TileX, &Result.X)
+	canonicalizeCoord(world, &Result.TileY, &Result.Y)
 
 	return Result
 }
 
-isWorldPointEmpty :: proc(world: ^World, CanPos: CanonicalPosition) -> bool {
+isWorldPointEmpty :: proc(world: ^World, CanPos: WorldPosition) -> bool {
 	empty : bool = false
 	tile_map : ^TileMap = getTileMap(world, CanPos.TileMapX, CanPos.TileMapY)
 	empty = isTileEmpty(world, tile_map, CanPos.TileX, CanPos.TileY)
@@ -262,8 +252,8 @@ main :: proc() {
 	DT :: 1.0/60.0
 	accumulated_time : f32
 	P : Player = {
-		speed = 2.0,
-		pos = CanonicalPosition{
+		speed = 4.0,
+		pos = WorldPosition{
 			TileMapX = 0,
 			TileMapY = 0,
 			TileX = 3,
@@ -345,14 +335,14 @@ main :: proc() {
 					if P.pos.Y - player_collider.height > wall_col.y + wall_col.height && P.velocity.y < 0 {P.velocity.y = 0}
 				}
 			}
-			new_player_pos : CanonicalPosition = P.pos
+			new_player_pos : WorldPosition = P.pos
 			new_player_pos.X += P.velocity.x * DT
 			new_player_pos.Y += P.velocity.y * DT
 			new_player_pos = recanonicalizePosition(&world, new_player_pos)
-			PlayerLeft : CanonicalPosition = new_player_pos
+			PlayerLeft : WorldPosition = new_player_pos
 			PlayerLeft.X -= 0.5*player_collider.width/world.metersToPixels
 			PlayerLeft = recanonicalizePosition(&world, PlayerLeft)
-			PlayerRight : CanonicalPosition = new_player_pos
+			PlayerRight : WorldPosition = new_player_pos
 			PlayerRight.X += 0.5*player_collider.width/world.metersToPixels
 			PlayerRight = recanonicalizePosition(&world, PlayerRight)
 			if  isWorldPointEmpty(&world, new_player_pos) &&
@@ -400,7 +390,6 @@ main :: proc() {
 		rl.DrawCircleV({f32(world.countX*(world.tileSidePixels)/2),f32(world.countY*world.tileSidePixels/2)},1,rl.RED)
 		rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
 		
-			
 		if rl.IsKeyPressed(.F2) {
 			editing = !editing
 		}
