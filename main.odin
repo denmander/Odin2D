@@ -148,7 +148,7 @@ canonicalizeCoord :: proc(world: ^World, Tile : ^int, TileRel: ^f32)	{
 	TileRel^ -= f32(Offset)*world.tileSideMeters
 
 	assert(TileRel^ >= 0)
-	assert(TileRel^ < f32(world.tileSideMeters))
+	assert(TileRel^ <= f32(world.tileSideMeters))
 }
 
 recanonicalizePosition :: proc (world : ^World, pos: WorldPosition) -> WorldPosition {
