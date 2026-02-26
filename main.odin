@@ -226,8 +226,8 @@ main :: proc() {
 		tileChunkCountX = 1,
 		tileChunkCountY = 1,
 	}
-	temp_tiles: [256*256]u32
-	/*temp_tiles[0:576] = {
+	chunk: [256*256]u32
+	temp_tiles:[576]u32 = {
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1,
@@ -245,9 +245,10 @@ main :: proc() {
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1,
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}*/
+		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
+	copy(chunk[:], temp_tiles[:])
 	tile_chunks[0] = {
-		tiles = &temp_tiles
+		tiles = &chunk
 	}
 	upperLeftX : f32
 	upperLeftY : f32	//Origin
@@ -264,8 +265,8 @@ main :: proc() {
 	P : Player = {
 		speed = 4.0,
 		pos = WorldPosition{
-			AbsTileX = 30,
-			AbsTileY = 20,
+			AbsTileX = 20,
+			AbsTileY = 10,
 			TileRelX = 5.0,
 			TileRelY = 5.0
 		}
@@ -384,7 +385,7 @@ main :: proc() {
 				Row := int(P.pos.AbsTileY) + RelRow
 				Column := int(P.pos.AbsTileX) + RelColumn
 				tileID := getTileValue(&world, u32(Column), u32(Row))
-				if tileChunk.tiles[Row*int(world.ChunkDim)+Column] == 1 {
+				if tileID == 1 {
 					rl.DrawRectangle(i32(Column*world.tileSidePixels),i32(Row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),{150, 200, 200, 255})
 				}
 				else {
