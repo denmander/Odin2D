@@ -47,6 +47,16 @@ Animation :: struct {
 	name : Animation_Name
 }
 
+fill_chunk :: proc(start_x, start_y: int, chunk: ^[256][256]u32, block: ^[][]u32){
+	fmt.printfln("%v", len(block))
+	fmt.printfln("%v", len(block[0]))
+	for y := 0; y < len(block); y += 1{
+		for x := 0; x < len(block[0]); x += 1{
+			chunk[y+start_y][x+start_x] = block[y][x]
+		}
+	}
+}
+
 update_animation :: proc(a: ^Animation) {
 	a.frame_timer += rl.GetFrameTime()
 	for a.frame_timer > a.frame_length {
@@ -84,7 +94,7 @@ Level :: struct {
 	walls: [dynamic]rl.Vector2,
 }
 TileChunk :: struct{	//Represents a tilechunk as a Matrix of size [X x Y x Z]
-	tiles : ^[65536]u32	//Pointer address to the array of tilechunk data
+	tiles : ^[256][256]u32		//Pointer address to the array of tilechunk data
 }
 
 World :: struct{
@@ -99,7 +109,7 @@ World :: struct{
 	
 	tileChunkCountX : u32,//number X of the TileMaps array
 	tileChunkCountY : u32,//number Y of the TileMaps array
-	tileChunks : ^[1]TileChunk
+	tileChunks : ^[][]TileChunk
 }
 
 wall_collider :: proc(pos: rl.Vector2) -> rl.Rectangle {
@@ -121,7 +131,7 @@ getTileChunk :: proc(world: ^World, tileChunkX, tileChunkY: u32) -> ^TileChunk{
 	if tileChunkX >= 0 && tileChunkX < world.tileChunkCountX &&
 		tileChunkY >= 0 && tileChunkY < world.tileChunkCountY 
 	{
-		tile_chunk = &world.tileChunks[tileChunkY * world.tileChunkCountX + tileChunkX]
+		tile_chunk = &world.tileChunks[tileChunkY][tileChunkX]
 	}
 	return tile_chunk
 }
@@ -130,7 +140,7 @@ getTileValueUnchecked :: proc(world: ^World, tile_chunk: ^TileChunk, tileX, tile
 	assert(tile_chunk != nil)
 	assert(tileX < world.ChunkDim)
 	assert(tileY < world.ChunkDim)
-	tile_chunk_value : u32 = tile_chunk.tiles^[tileY * world.ChunkDim + tileX]
+	tile_chunk_value : u32 = tile_chunk.tiles^[tileY][tileX]
 	return tile_chunk_value
 }
 
@@ -215,7 +225,7 @@ main :: proc() {
 	rl.SetWindowState({.WINDOW_RESIZABLE})
 	rl.SetTargetFPS(60)
 
-	tile_chunks : [1]TileChunk
+	tile_chunks : TileChunk
 	world : World = {
 		// Set to using 256x256 tile chunks
 		ChunkShift = 8,
@@ -226,34 +236,32 @@ main :: proc() {
 		tileChunkCountX = 1,
 		tileChunkCountY = 1,
 	}
-	chunk: [256*256]u32
-	temp_tiles:[576]u32 = {
-		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1,
-		1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
-	copy(chunk[:], temp_tiles[:])
-	tile_chunks[0] = {
-		tiles = &chunk
-	}
+	chunk: [256][256]u32
+	temp_tiles:[][]u32 = {
+		{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+		{1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1},
+		{1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+		{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
+	fill_chunk(2,2, &chunk, &temp_tiles)
+	tile_chunks.tiles = &chunk
 	upperLeftX : f32
 	upperLeftY : f32	//Origin
 	world.metersToPixels = f32(world.tileSidePixels) / world.tileSideMeters
-	world.tileChunks = &tile_chunks
+	world.tileChunks[0][0] = tile_chunks 
 	tileChunk : ^TileChunk = getTileChunk(&world,0,0)
 	assert(tileChunk != nil, "Tilechunk Loaded Incorrectly")
 	
