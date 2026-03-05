@@ -5,7 +5,6 @@ import "core:math"
 import "core:mem"
 import "core:fmt"
 import "core:os"
-import "core:encoding/json"
 import rl "vendor:raylib"
 
 WorldPosition :: struct{
@@ -48,11 +47,11 @@ Animation :: struct {
 }
 
 fill_chunk :: proc(start_x, start_y: int, chunk: ^[256][256]u32, block: ^[][]u32){
-	fmt.printfln("%v", len(block))
-	fmt.printfln("%v", len(block[0]))
 	for y := 0; y < len(block); y += 1{
 		for x := 0; x < len(block[0]); x += 1{
-			chunk[y+start_y][x+start_x] = block[y][x]
+			if  != 0 {
+				chunk[y+start_y][x+start_x] = block[y][x]
+			}
 		}
 	}
 }
@@ -90,11 +89,8 @@ draw_animation :: proc(a: Animation, pos: rl.Vector2, dir_index: int, flip:bool)
 
 PixelWindowHeight :: 180
 
-Level :: struct {
-	walls: [dynamic]rl.Vector2,
-}
 TileChunk :: struct{	//Represents a tilechunk as a Matrix of size [X x Y x Z]
-	tiles : ^[256][256]u32		//Pointer address to the array of tilechunk data
+	tiles : [^]u32		//Pointer address to the array of tilechunk data
 }
 
 World :: struct{
@@ -109,14 +105,7 @@ World :: struct{
 	
 	tileChunkCountX : u32,//number X of the TileMaps array
 	tileChunkCountY : u32,//number Y of the TileMaps array
-	tileChunks : ^[][]TileChunk
-}
-
-wall_collider :: proc(pos: rl.Vector2) -> rl.Rectangle {
-	return {
-		pos.x, pos.y,
-		96,16,
-	}
+	tileChunks : [^]TileChunk
 }
 
 floorf32toint :: proc(value: f32) -> int {
@@ -131,7 +120,7 @@ getTileChunk :: proc(world: ^World, tileChunkX, tileChunkY: u32) -> ^TileChunk{
 	if tileChunkX >= 0 && tileChunkX < world.tileChunkCountX &&
 		tileChunkY >= 0 && tileChunkY < world.tileChunkCountY 
 	{
-		tile_chunk = &world.tileChunks[tileChunkY][tileChunkX]
+		tile_chunk = &world.tileChunks[tileChunkY*world.ChunkDim +tileChunkX]
 	}
 	return tile_chunk
 }
@@ -140,7 +129,7 @@ getTileValueUnchecked :: proc(world: ^World, tile_chunk: ^TileChunk, tileX, tile
 	assert(tile_chunk != nil)
 	assert(tileX < world.ChunkDim)
 	assert(tileY < world.ChunkDim)
-	tile_chunk_value : u32 = tile_chunk.tiles^[tileY][tileX]
+	tile_chunk_value : u32 = tile_chunk.tiles[tileY*world.ChunkDim +tileX]
 	return tile_chunk_value
 }
 
@@ -205,8 +194,7 @@ isWorldPointEmpty :: proc(world: ^World, CanPos: WorldPosition) -> bool {
 }
 
 main :: proc() {
-	
-	track :mem.Tracking_Allocator
+	/*track :mem.Tracking_Allocator
 	mem.tracking_allocator_init(&track, context.allocator)
 	context.allocator = mem.tracking_allocator(&track)
 
@@ -218,7 +206,7 @@ main :: proc() {
 			fmt.eprintf("%v bad free\n", entry.location)
 		}
 		mem.tracking_allocator_destroy(&track)
-	}
+	}*/
 	rl.SetConfigFlags({.VSYNC_HINT})
 	rl.InitWindow(1280,720,"Game")
 	rl.SetWindowPosition(50,50)
@@ -236,7 +224,7 @@ main :: proc() {
 		tileChunkCountX = 1,
 		tileChunkCountY = 1,
 	}
-	chunk: [256][256]u32
+	chunk: [256][256]u32 = {}
 	temp_tiles:[][]u32 = {
 		{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
 		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1},
@@ -257,13 +245,13 @@ main :: proc() {
 		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
 		{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
 	fill_chunk(2,2, &chunk, &temp_tiles)
-	tile_chunks.tiles = &chunk
-	upperLeftX : f32
-	upperLeftY : f32	//Origin
+	tile_chunks.tiles = &chunk[0][0]
 	world.metersToPixels = f32(world.tileSidePixels) / world.tileSideMeters
-	world.tileChunks[0][0] = tile_chunks 
+	world.tileChunks = &tile_chunks
 	tileChunk : ^TileChunk = getTileChunk(&world,0,0)
 	assert(tileChunk != nil, "Tilechunk Loaded Incorrectly")
+	upperLeftX : f32
+	upperLeftY : f32	//Origin
 	
 	grassSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\spring.png")
 	dirtSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\dirt.png")
@@ -301,14 +289,6 @@ main :: proc() {
 	}
 
 	current_anim := player_idle
-	level : Level
-	if level_data, ok := os.read_entire_file("level.json", context.temp_allocator);ok {
-		if json.unmarshal(level_data, &level) != nil {
-			append(&level.walls, rl.Vector2{-16,16})
-		}
-	} else {
-		append(&level.walls, rl.Vector2{-16,16})
-	}
 	
 	editing := false
 	for !rl.WindowShouldClose() {
@@ -343,15 +323,6 @@ main :: proc() {
 			player_collider.x = world.metersToPixels*(world.tileSideMeters*f32(P.pos.AbsTileX) + P.pos.TileRelX + P.velocity.x) * DT - player_collider.width/2.0
 			player_collider.y = world.metersToPixels*(world.tileSideMeters*f32(P.pos.AbsTileY) + P.pos.TileRelY + P.velocity.y) * DT - player_collider.height
 			
-			for wall in level.walls {
-				wall_col := wall_collider(wall)
-				if rl.CheckCollisionRecs(player_collider,wall_col) {
-					if P.pos.TileRelX + player_collider.width/2 < wall_col.x && P.velocity.x > 0 {P.velocity.x = 0}
-					if P.pos.TileRelX - player_collider.width/2 > wall_col.x + wall_col.width && P.velocity.x < 0 {P.velocity.x = 0}
-					if P.pos.TileRelY < wall_col.y && P.velocity.y > 0 {P.velocity.y = 0}
-					if P.pos.TileRelY - player_collider.height > wall_col.y + wall_col.height && P.velocity.y < 0 {P.velocity.y = 0}
-				}
-			}
 			new_player_pos : WorldPosition = P.pos
 			new_player_pos.TileRelX += P.velocity.x * DT
 			new_player_pos.TileRelY += P.velocity.y * DT
@@ -387,7 +358,6 @@ main :: proc() {
 		}
 		
 		rl.BeginMode2D(camera)
-		//tileChunk = getTileChunk( &world, P.pos.TileMapX, P.pos.TileMapY)
 		for RelRow :=-10; RelRow<10; RelRow += 1 {
 			for RelColumn :=-20; RelColumn<+20; RelColumn += 1 {
 				Row := int(P.pos.AbsTileY) + RelRow
@@ -403,7 +373,6 @@ main :: proc() {
 				}
 			}
 		}
-		for wall in level.walls {	rl.DrawRectangleRec(wall_collider(wall),rl.RED)}
 		draw_animation(current_anim, {upperLeftX + f32(world.tileSidePixels*int(P.pos.AbsTileX)) + world.metersToPixels*P.pos.TileRelX,
 				upperLeftY + f32(world.tileSidePixels*int(P.pos.AbsTileY)) + world.metersToPixels*P.pos.TileRelY}, int(P.dir), P.flip)
 		rl.DrawCircleV({f32(int(world.ChunkDim)*(world.tileSidePixels)/2),f32(int(world.ChunkDim)*world.tileSidePixels/2)},1,rl.RED)
@@ -413,31 +382,13 @@ main :: proc() {
 			editing = !editing
 		}
 		if editing {
-			mp := rl.GetScreenToWorld2D(rl.GetMousePosition(),camera)
-			rl.DrawRectangleV(mp, {16,16}, rl.RED)
-			if rl.IsMouseButtonPressed(.LEFT){
-				append(&level.walls, mp)
-			}
-			if rl.IsMouseButtonPressed(.RIGHT){
-				for w, idx in level.walls {
-					if rl.CheckCollisionPointRec(mp, wall_collider(w)) {
-						unordered_remove(&level.walls, idx)
-						break
-					}
-				}
-			}
 		}
 
 		rl.EndMode2D()
 		rl.EndDrawing()
-		free_all(context.temp_allocator)
+		//free_all(context.temp_allocator)
 	}
 
 	rl.CloseWindow()
-	if level_data, err := json.marshal(level, allocator = context.temp_allocator); err == nil{
-		os.write_entire_file("level.json", level_data)
-	}
-
-	free_all(context.temp_allocator)
-	delete(level.walls)
+	//free_all(context.temp_allocator)
 }
