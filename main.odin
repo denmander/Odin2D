@@ -49,7 +49,7 @@ Animation :: struct {
 fill_chunk :: proc(start_x, start_y: int, chunk: ^[256][256]u32, block: ^[][]u32){
 	for y := 0; y < len(block); y += 1{
 		for x := 0; x < len(block[0]); x += 1{
-			if  != 0 {
+			if block[y][x] != 0 {
 				chunk[y+start_y][x+start_x] = block[y][x]
 			}
 		}
@@ -295,20 +295,20 @@ main :: proc() {
 		accumulated_time += rl.GetFrameTime() //Fixed timestep
 		for accumulated_time >= DT {
 			dir : rl.Vector2
-			if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) {
+			if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) || (rl.GetGamepadAxisMovement(0, rl.GamepadAxis.LEFT_Y) < -0.1) {
 				dir += {0,-1}
 				P.dir = .UP
 			}
-			if rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.S) {
+			if rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.S) || (rl.GetGamepadAxisMovement(0, rl.GamepadAxis.LEFT_Y) > 0.1)  {
 				dir += {0,1}
 				P.dir = .DOWN
 			}
-			if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) {
+			if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) || (rl.GetGamepadAxisMovement(0, rl.GamepadAxis.LEFT_X) < -0.1)  {
 				dir += {-1,0}
 				P.flip = true
 				P.dir = .SIDE
 			}
-			if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) {
+			if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) || (rl.GetGamepadAxisMovement(0, rl.GamepadAxis.LEFT_X) > 0.1)  {
 				dir += {1,0}
 				P.flip = false
 				P.dir = .SIDE
