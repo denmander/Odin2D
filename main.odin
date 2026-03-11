@@ -194,7 +194,7 @@ isWorldPointEmpty :: proc(world: ^World, CanPos: WorldPosition) -> bool {
 }
 
 main :: proc() {
-	/*track :mem.Tracking_Allocator
+	track :mem.Tracking_Allocator
 	mem.tracking_allocator_init(&track, context.allocator)
 	context.allocator = mem.tracking_allocator(&track)
 
@@ -206,7 +206,7 @@ main :: proc() {
 			fmt.eprintf("%v bad free\n", entry.location)
 		}
 		mem.tracking_allocator_destroy(&track)
-	}*/
+	}
 	rl.SetConfigFlags({.VSYNC_HINT})
 	rl.InitWindow(1280,720,"Game")
 	rl.SetWindowPosition(50,50)
@@ -256,6 +256,9 @@ main :: proc() {
 	grassSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\spring.png")
 	dirtSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\dirt.png")
 	waterSprite : rl.Texture2D = rl.LoadTexture("assets\\tilesets\\water - spring.png")
+	defer rl.UnloadTexture(grassSprite)
+	defer rl.UnloadTexture(dirtSprite)
+	defer rl.UnloadTexture(waterSprite)
 	DT :: 1.0/60.0
 	accumulated_time : f32
 	P : Player = {
@@ -354,7 +357,7 @@ main :: proc() {
 		camera := rl.Camera2D {
 			zoom = screen_height/PixelWindowHeight,
 			offset = {f32(rl.GetScreenWidth()/2),screen_height/2},
-			target = {f32(P.pos.AbsTileX*u32(world.tileSidePixels))+P.pos.TileRelX,f32(P.pos.AbsTileY*u32(world.tileSidePixels))+P.pos.TileRelY}
+			target = {f32(P.pos.AbsTileX)*f32(world.tileSidePixels)+P.pos.TileRelX*world.metersToPixels,f32(P.pos.AbsTileY)*f32(world.tileSidePixels)+P.pos.TileRelY*world.metersToPixels}
 		}
 		
 		rl.BeginMode2D(camera)
@@ -375,7 +378,7 @@ main :: proc() {
 		}
 		draw_animation(current_anim, {upperLeftX + f32(world.tileSidePixels*int(P.pos.AbsTileX)) + world.metersToPixels*P.pos.TileRelX,
 				upperLeftY + f32(world.tileSidePixels*int(P.pos.AbsTileY)) + world.metersToPixels*P.pos.TileRelY}, int(P.dir), P.flip)
-		rl.DrawCircleV({f32(int(world.ChunkDim)*(world.tileSidePixels)/2),f32(int(world.ChunkDim)*world.tileSidePixels/2)},1,rl.RED)
+		rl.DrawCircleV({f32(P.pos.AbsTileX)*f32(world.tileSidePixels),f32(P.pos.AbsTileY)*f32(world.tileSidePixels)},1,rl.RED)
 		rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
 		
 		if rl.IsKeyPressed(.F2) {
