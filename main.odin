@@ -8,7 +8,9 @@ import "core:os"
 import rl "vendor:raylib"
 
 WorldPosition :: struct{
-	AbsTileX, AbsTileY: u32,
+	//These are fixed point tile locations.
+	//24 high bits for tile chunk index, 8 low bits for tile index within the chunk
+	AbsTileX, AbsTileY: u32, 
 	TileRelX, TileRelY: f32 "Tile relative X and Y"
 }
 TileChunkPosition :: struct{
@@ -111,8 +113,8 @@ World :: struct{
 floorf32toint :: proc(value: f32) -> int {
 	return int(math.floor(value))
 }
-truncatef32toint :: proc(value: f32) -> int {
-	return int(value + 0.5)
+roundf32toint :: proc(value: f32) -> int {
+	return int(math.round(value))
 }
 
 getTileChunk :: proc(world: ^World, tileChunkX, tileChunkY: u32) -> ^TileChunk{
@@ -145,12 +147,12 @@ isChunkTileEmpty :: proc(world: ^World, tile_chunk: ^TileChunk, testX, testY: u3
 canonicalizeCoord :: proc(world: ^World, Tile : ^u32, TileRel: ^f32)	{
 	// divide/multiply method can round back to the same tile in an edge case
 	// Bounds checking to prevent wrapping?
-	Offset : int = floorf32toint(TileRel^ / f32(world.tileSideMeters))
+	Offset : int = roundf32toint(TileRel^ / f32(world.tileSideMeters))
 	Tile^ += u32(Offset)
 	TileRel^ -= f32(Offset)*world.tileSideMeters
 
-	assert(TileRel^ >= 0)
-	assert(TileRel^ <= f32(world.tileSideMeters))
+	assert(TileRel^ >= -0.5*f32(world.tileSideMeters))
+	assert(TileRel^ <= 0.5*f32(world.tileSideMeters))
 }
 
 recanonicalizePosition :: proc (world : ^World, pos: WorldPosition) -> WorldPosition {
@@ -298,6 +300,9 @@ main :: proc() {
 		accumulated_time += rl.GetFrameTime() //Fixed timestep
 		for accumulated_time >= DT {
 			dir : rl.Vector2
+			if rl.IsKeyDown(.LEFT_SHIFT) || rl.IsGamepadButtonDown(0, rl.GamepadButton.RIGHT_FACE_RIGHT){
+				P.speed = 10.0
+			} else { P.speed = 4.0}
 			if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) || (rl.GetGamepadAxisMovement(0, rl.GamepadAxis.LEFT_Y) < -0.1) {
 				dir += {0,-1}
 				P.dir = .UP
@@ -366,13 +371,23 @@ main :: proc() {
 				Row := int(P.pos.AbsTileY) + RelRow
 				Column := int(P.pos.AbsTileX) + RelColumn
 				tileID := getTileValue(&world, u32(Column), u32(Row))
+				color : rl.Color
+				StartX := i32(Column*world.tileSidePixels) - i32(world.tileSidePixels)/2
+				StartY := i32(Row*world.tileSidePixels) - i32(world.tileSidePixels)/2
+				
 				if tileID == 1 {
-					rl.DrawRectangle(i32(Column*world.tileSidePixels),i32(Row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),{150, 200, 200, 255})
+					color = {150, 200, 200, 255}
+					//rl.DrawRectangle(i32(Column*world.tileSidePixels),i32(Row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),{150, 200, 200, 255})
 				}
 				else {
 					if Column == int(P.pos.AbsTileX) && Row == int(P.pos.AbsTileY) {
-						rl.DrawRectangle(i32(Column*world.tileSidePixels),i32(Row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),rl.BLACK)	
-					} else do rl.DrawRectangle(i32(Column*world.tileSidePixels),i32(Row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),rl.LIME)
+						color = rl.BLACK
+						//rl.DrawRectangle(i32(Column*world.tileSidePixels),i32(Row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),rl.BLACK)	
+					} else {
+						color = rl.LIME
+						//rl.DrawRectangle(i32(Column*world.tileSidePixels),i32(Row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),rl.LIME)
+					}
+					rl.DrawRectangle(StartX,StartY,i32(world.tileSidePixels),i32(world.tileSidePixels),color)
 				}
 			}
 		}
