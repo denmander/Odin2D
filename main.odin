@@ -7,47 +7,6 @@ import "core:fmt"
 import "core:os"
 import rl "vendor:raylib"
 
-WorldPosition :: struct{
-	//These are fixed point tile locations.
-	//24 high bits for tile chunk index, 8 low bits for tile index within the chunk
-	AbsTileX, AbsTileY: u32, 
-	TileRelX, TileRelY: f32 "Tile relative X and Y"
-}
-TileChunkPosition :: struct{
-	TileChunkX, TileChunkY : u32,
-	RelTileX, RelTileY : u32
-}
-Direction :: enum {
-	SIDE,
-	DOWN,
-	UP
-}
-Player :: struct {
-	pos : WorldPosition,
-	old_pos : rl.Vector2,
-	velocity : rl.Vector2,
-	speed : f32,
-	dir : Direction,
-	flip: bool
-}
-
-Animation_Name :: enum {
-	walk,
-	run,
-	idle,
-	jump,
-}
-
-Animation :: struct {
-	texture : rl.Texture2D,
-	frame_count : int,
-	rows : int,
-	frame_timer : f32,
-	current_frame : int,
-	frame_length : f32,
-	name : Animation_Name
-}
-
 fill_chunk :: proc(start_x, start_y: int, chunk: ^[256][256]u32, block: ^[][]u32){
 	for y := 0; y < len(block); y += 1{
 		for x := 0; x < len(block[0]); x += 1{
@@ -91,108 +50,11 @@ draw_animation :: proc(a: Animation, pos: rl.Vector2, dir_index: int, flip:bool)
 
 PixelWindowHeight :: 180
 
-TileChunk :: struct{	//Represents a tilechunk as a Matrix of size [X x Y x Z]
-	tiles : [^]u32		//Pointer address to the array of tilechunk data
-}
-
-World :: struct{
-	ChunkShift: u32,
-	ChunkMask: u32,
-
-	tileSideMeters: f32,//Size of a tile in metric
-	tileSidePixels: int,//Size of a tile in pixels
-	metersToPixels: f32,
-	ChunkDim : u32, 	//Dimension of a chunk
-	layer: int,		//Depth of the tilemap
-	
-	tileChunkCountX : u32,//number X of the TileMaps array
-	tileChunkCountY : u32,//number Y of the TileMaps array
-	tileChunks : [^]TileChunk
-}
-
 floorf32toint :: proc(value: f32) -> int {
 	return int(math.floor(value))
 }
 roundf32toint :: proc(value: f32) -> int {
 	return int(math.round(value))
-}
-
-getTileChunk :: proc(world: ^World, tileChunkX, tileChunkY: u32) -> ^TileChunk{
-	tile_chunk : ^TileChunk
-	if tileChunkX >= 0 && tileChunkX < world.tileChunkCountX &&
-		tileChunkY >= 0 && tileChunkY < world.tileChunkCountY 
-	{
-		tile_chunk = &world.tileChunks[tileChunkY*world.ChunkDim +tileChunkX]
-	}
-	return tile_chunk
-}
-
-getTileValueUnchecked :: proc(world: ^World, tile_chunk: ^TileChunk, tileX, tileY: u32) -> u32{
-	assert(tile_chunk != nil)
-	assert(tileX < world.ChunkDim)
-	assert(tileY < world.ChunkDim)
-	tile_chunk_value : u32 = tile_chunk.tiles[tileY*world.ChunkDim +tileX]
-	return tile_chunk_value
-}
-
-isChunkTileEmpty :: proc(world: ^World, tile_chunk: ^TileChunk, testX, testY: u32) -> bool {
-	empty : bool = false
-	if tile_chunk != nil{
-			tile_chunk_value := getTileValueUnchecked(world, tile_chunk, testX, testY)
-			empty = tile_chunk_value == 0
-		}
-	return empty
-}
-
-canonicalizeCoord :: proc(world: ^World, Tile : ^u32, TileRel: ^f32)	{
-	// divide/multiply method can round back to the same tile in an edge case
-	// Bounds checking to prevent wrapping?
-	Offset : int = roundf32toint(TileRel^ / f32(world.tileSideMeters))
-	Tile^ += u32(Offset)
-	TileRel^ -= f32(Offset)*world.tileSideMeters
-
-	assert(TileRel^ >= -0.5*f32(world.tileSideMeters))
-	assert(TileRel^ <= 0.5*f32(world.tileSideMeters))
-}
-
-recanonicalizePosition :: proc (world : ^World, pos: WorldPosition) -> WorldPosition {
-	Result : WorldPosition = pos
-
-	canonicalizeCoord(world, &Result.AbsTileX, &Result.TileRelX)
-	canonicalizeCoord(world, &Result.AbsTileY, &Result.TileRelY)
-
-	return Result
-}
-
-getChunkPos :: proc(world: ^World, AbsTileX, AbsTileY : u32) -> TileChunkPosition{
-	Result : TileChunkPosition
-	Result.TileChunkX = AbsTileX >> world.ChunkShift
-	Result.TileChunkY = AbsTileY >> world.ChunkShift
-	Result.RelTileX = AbsTileX & world.ChunkMask
-	Result.RelTileY = AbsTileY & world.ChunkMask
-
-	return Result
-}
-
-getChunkTileValue :: proc(world: ^World, tile_chunk: ^TileChunk, testX, testY: u32) -> u32 {
-	chunk_tile_value: u32 = 0
-	if tile_chunk != nil{
-			chunk_tile_value = getTileValueUnchecked(world, tile_chunk, testX, testY)
-		}
-	return chunk_tile_value
-}
-
-getTileValue :: proc(world: ^World, AbsTileX, AbsTileY: u32) -> u32 { //Placeholder
-	chunk_pos : TileChunkPosition = getChunkPos(world, AbsTileX, AbsTileY)
-	tile_map : ^TileChunk = getTileChunk(world, chunk_pos.TileChunkX, chunk_pos.TileChunkY)
-	tile_value : u32 = getChunkTileValue(world, tile_map, AbsTileX, AbsTileY)
-	return tile_value
-}
-
-isWorldPointEmpty :: proc(world: ^World, CanPos: WorldPosition) -> bool {
-	tile_chunk_value : u32 = getTileValue(world, CanPos.AbsTileX, CanPos.AbsTileY)	
-	empty : bool = tile_chunk_value == 0
-	return empty
 }
 
 main :: proc() {
@@ -216,7 +78,7 @@ main :: proc() {
 	rl.SetTargetFPS(60)
 
 	tile_chunks : TileChunk
-	world : World = {
+	tilemap : TileMap = {
 		// Set to using 256x256 tile chunks
 		ChunkShift = 8,
 		ChunkMask = 0xFF,
@@ -248,9 +110,9 @@ main :: proc() {
 		{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
 	fill_chunk(2,2, &chunk, &temp_tiles)
 	tile_chunks.tiles = &chunk[0][0]
-	world.metersToPixels = f32(world.tileSidePixels) / world.tileSideMeters
-	world.tileChunks = &tile_chunks
-	tileChunk : ^TileChunk = getTileChunk(&world,0,0)
+	tilemap.metersToPixels = f32(tilemap.tileSidePixels) / tilemap.tileSideMeters
+	tilemap.tileChunks = &tile_chunks
+	tileChunk : ^TileChunk = getTileChunk(&tilemap,0,0)
 	assert(tileChunk != nil, "Tilechunk Loaded Incorrectly")
 	upperLeftX : f32
 	upperLeftY : f32	//Origin
@@ -265,7 +127,7 @@ main :: proc() {
 	accumulated_time : f32
 	P : Player = {
 		speed = 4.0,
-		pos = WorldPosition{
+		pos = TileMapPosition{
 			AbsTileX = 20,
 			AbsTileY = 10,
 			TileRelX = 5.0,
@@ -273,8 +135,8 @@ main :: proc() {
 		}
 	}
 	player_collider := rl.Rectangle{
-		world.tileSideMeters*world.metersToPixels*f32(P.pos.AbsTileX) + P.pos.TileRelX,
-		world.tileSideMeters*world.metersToPixels*f32(P.pos.AbsTileY) + P.pos.TileRelY,
+		tilemap.tileSideMeters*tilemap.metersToPixels*f32(P.pos.AbsTileX) + P.pos.TileRelX,
+		tilemap.tileSideMeters*tilemap.metersToPixels*f32(P.pos.AbsTileY) + P.pos.TileRelY,
 		10,
 		6,
 	}
@@ -328,26 +190,26 @@ main :: proc() {
 				P.velocity = math.lerp(P.velocity, rl.Vector2{0,0}, f32(0.8))
 				if current_anim.name != .idle {current_anim = player_idle}
 			}
-			player_collider.x = world.metersToPixels*(world.tileSideMeters*f32(P.pos.AbsTileX) + P.pos.TileRelX + P.velocity.x) * DT - player_collider.width/2.0
-			player_collider.y = world.metersToPixels*(world.tileSideMeters*f32(P.pos.AbsTileY) + P.pos.TileRelY + P.velocity.y) * DT - player_collider.height
+			player_collider.x = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(P.pos.AbsTileX) + P.pos.TileRelX + P.velocity.x) * DT - player_collider.width/2.0
+			player_collider.y = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(P.pos.AbsTileY) + P.pos.TileRelY + P.velocity.y) * DT - player_collider.height
 			
-			new_player_pos : WorldPosition = P.pos
+			new_player_pos : TileMapPosition = P.pos
 			new_player_pos.TileRelX += P.velocity.x * DT
 			new_player_pos.TileRelY += P.velocity.y * DT
-			new_player_pos = recanonicalizePosition(&world, new_player_pos)
-			PlayerLeft : WorldPosition = new_player_pos
-			PlayerLeft.TileRelX -= 0.5*player_collider.width/world.metersToPixels
-			PlayerLeft = recanonicalizePosition(&world, PlayerLeft)
-			PlayerRight : WorldPosition = new_player_pos
-			PlayerRight.TileRelX += 0.5*player_collider.width/world.metersToPixels
-			PlayerRight = recanonicalizePosition(&world, PlayerRight)
-			if  isWorldPointEmpty(&world, new_player_pos) &&
-			isWorldPointEmpty(&world, PlayerLeft) &&
-			isWorldPointEmpty(&world, PlayerRight){
+			new_player_pos = recanonicalizePosition(&tilemap, new_player_pos)
+			PlayerLeft : TileMapPosition = new_player_pos
+			PlayerLeft.TileRelX -= 0.5*player_collider.width/tilemap.metersToPixels
+			PlayerLeft = recanonicalizePosition(&tilemap, PlayerLeft)
+			PlayerRight : TileMapPosition = new_player_pos
+			PlayerRight.TileRelX += 0.5*player_collider.width/tilemap.metersToPixels
+			PlayerRight = recanonicalizePosition(&tilemap, PlayerRight)
+			if  isTileMapPointEmpty(&tilemap, new_player_pos) &&
+			isTileMapPointEmpty(&tilemap, PlayerLeft) &&
+			isTileMapPointEmpty(&tilemap, PlayerRight){
 				P.pos = new_player_pos
 			}
-			player_collider.x = world.metersToPixels*(world.tileSideMeters*f32(P.pos.AbsTileX) + P.pos.TileRelX) - player_collider.width/2.0
-			player_collider.y = world.metersToPixels*(world.tileSideMeters*f32(P.pos.AbsTileY) + P.pos.TileRelY) - player_collider.height
+			player_collider.x = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(P.pos.AbsTileX) + P.pos.TileRelX) - player_collider.width/2.0
+			player_collider.y = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(P.pos.AbsTileY) + P.pos.TileRelY) - player_collider.height
 			accumulated_time -= DT
 		}
 		blend := accumulated_time / DT
@@ -362,7 +224,7 @@ main :: proc() {
 		camera := rl.Camera2D {
 			zoom = screen_height/PixelWindowHeight,
 			offset = {f32(rl.GetScreenWidth()/2),screen_height/2},
-			target = {f32(P.pos.AbsTileX)*f32(world.tileSidePixels)+P.pos.TileRelX*world.metersToPixels,f32(P.pos.AbsTileY)*f32(world.tileSidePixels)+P.pos.TileRelY*world.metersToPixels}
+			target = {f32(P.pos.AbsTileX)*f32(tilemap.tileSidePixels)+P.pos.TileRelX*tilemap.metersToPixels,f32(P.pos.AbsTileY)*f32(tilemap.tileSidePixels)+P.pos.TileRelY*tilemap.metersToPixels}
 		}
 		
 		rl.BeginMode2D(camera)
@@ -370,30 +232,30 @@ main :: proc() {
 			for RelColumn :=-20; RelColumn<+20; RelColumn += 1 {
 				Row := int(P.pos.AbsTileY) + RelRow
 				Column := int(P.pos.AbsTileX) + RelColumn
-				tileID := getTileValue(&world, u32(Column), u32(Row))
+				tileID := getTileValue(&tilemap, u32(Column), u32(Row))
 				color : rl.Color
-				StartX := i32(Column*world.tileSidePixels) - i32(world.tileSidePixels)/2
-				StartY := i32(Row*world.tileSidePixels) - i32(world.tileSidePixels)/2
+				StartX := i32(Column*tilemap.tileSidePixels) - i32(tilemap.tileSidePixels)/2
+				StartY := i32(Row*tilemap.tileSidePixels) - i32(tilemap.tileSidePixels)/2
 				
 				if tileID == 1 {
 					color = {150, 200, 200, 255}
-					//rl.DrawRectangle(i32(Column*world.tileSidePixels),i32(Row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),{150, 200, 200, 255})
+					//rl.DrawRectangle(i32(Column*tilemap.tileSidePixels),i32(Row*tilemap.tileSidePixels),i32(tilemap.tileSidePixels),i32(tilemap.tileSidePixels),{150, 200, 200, 255})
 				}
 				else {
 					if Column == int(P.pos.AbsTileX) && Row == int(P.pos.AbsTileY) {
 						color = rl.BLACK
-						//rl.DrawRectangle(i32(Column*world.tileSidePixels),i32(Row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),rl.BLACK)	
+						//rl.DrawRectangle(i32(Column*tilemap.tileSidePixels),i32(Row*tilemap.tileSidePixels),i32(tilemap.tileSidePixels),i32(tilemap.tileSidePixels),rl.BLACK)	
 					} else {
 						color = rl.LIME
-						//rl.DrawRectangle(i32(Column*world.tileSidePixels),i32(Row*world.tileSidePixels),i32(world.tileSidePixels),i32(world.tileSidePixels),rl.LIME)
+						//rl.DrawRectangle(i32(Column*tilemap.tileSidePixels),i32(Row*tilemap.tileSidePixels),i32(tilemap.tileSidePixels),i32(tilemap.tileSidePixels),rl.LIME)
 					}
-					rl.DrawRectangle(StartX,StartY,i32(world.tileSidePixels),i32(world.tileSidePixels),color)
+					rl.DrawRectangle(StartX,StartY,i32(tilemap.tileSidePixels),i32(tilemap.tileSidePixels),color)
 				}
 			}
 		}
-		draw_animation(current_anim, {upperLeftX + f32(world.tileSidePixels*int(P.pos.AbsTileX)) + world.metersToPixels*P.pos.TileRelX,
-				upperLeftY + f32(world.tileSidePixels*int(P.pos.AbsTileY)) + world.metersToPixels*P.pos.TileRelY}, int(P.dir), P.flip)
-		rl.DrawCircleV({f32(P.pos.AbsTileX)*f32(world.tileSidePixels),f32(P.pos.AbsTileY)*f32(world.tileSidePixels)},1,rl.RED)
+		draw_animation(current_anim, {upperLeftX + f32(tilemap.tileSidePixels*int(P.pos.AbsTileX)) + tilemap.metersToPixels*P.pos.TileRelX,
+				upperLeftY + f32(tilemap.tileSidePixels*int(P.pos.AbsTileY)) + tilemap.metersToPixels*P.pos.TileRelY}, int(P.dir), P.flip)
+		rl.DrawCircleV({f32(P.pos.AbsTileX)*f32(tilemap.tileSidePixels),f32(P.pos.AbsTileY)*f32(tilemap.tileSidePixels)},1,rl.RED)
 		rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
 		
 		if rl.IsKeyPressed(.F2) {
