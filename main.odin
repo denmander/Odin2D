@@ -76,20 +76,46 @@ main :: proc() {
 	rl.SetWindowPosition(50,50)
 	rl.SetWindowState({.WINDOW_RESIZABLE})
 	rl.SetTargetFPS(60)
+	Memory : GameMemory
+	Memory.PermanentStorageSize = 64*mem.Megabyte
+	Memory.TransientStorageSize = mem.Gigabyte
+	AllocatedMemory, _ := mem.alloc(int(Memory.PermanentStorageSize + Memory.TransientStorageSize))
+	Memory.PermanentStorage = AllocatedMemory
+	Memory.TransientStorage = mem.ptr_offset((^u8)(Memory.PermanentStorage), Memory.PermanentStorageSize)
+	game_state : GameState
+	InitializeArena(&game_state.world_arena, )
+
+	game_state.world = PushStruct(&game_state.world_arena ,world)
+	world : ^World = game_state.world
+	world.tilemap = PushStruct(&game_state.world_arena, tilemap)
+
+	tilemap : ^TileMap = world.tilemap
+
+	// Set to using 256x256 tile chunks
+	tilemap.ChunkShift = 8
+	tilemap.ChunkMask = (1 << tilemap.ChunkShift) - 1
+	tilemap.tileSideMeters = 1.4
+	tilemap.tileSidePixels = 16
+	tilemap.ChunkDim = 256
+	tilemap.tileChunkCountX = 1
+	tilemap.tileChunkCountY = 1
 
 	tile_chunks : TileChunk
-	tilemap : TileMap = {
-		// Set to using 256x256 tile chunks
-		ChunkShift = 8,
-		ChunkMask = 0xFF,
-		tileSideMeters = 1.4,
-		tileSidePixels = 16,
-		ChunkDim = 256,
-		tileChunkCountX = 1,
-		tileChunkCountY = 1,
-	}
 	chunk: [256][256]u32 = {}
-	temp_tiles:[][]u32 = {
+	TilesPerWidth : u32 = 17
+	TilesPerHeight : u32 = 9
+	for ScreenY : u32 = 0; ScreenY < 32; ScreenY += 1 {
+		for ScreenX : u32 = 0; ScreenX < 32; ScreenX += 1 {
+			for TileY : u32 = 0; TileY < TilesPerHeight; TileY += 1{
+				for TileX : u32 = 0; TileX < TilesPerWidth; TileX += 1{
+					AbsTileX := ScreenX*TilesPerWidth + TileX
+					AbsTileY := ScreenY*TilesPerHeight + TileY
+					setTileValue(world.tilemap,AbsTileX,AbsTileY,0)
+				}
+			}
+		}
+	}
+	/*temp_tiles:[][]u32 = {
 		{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
 		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1},
 		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1},
@@ -108,11 +134,11 @@ main :: proc() {
 		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
 		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
 		{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
-	fill_chunk(2,2, &chunk, &temp_tiles)
+	fill_chunk(2,2, &chunk, &temp_tiles)*/ // Fixed test initialization 
 	tile_chunks.tiles = &chunk[0][0]
 	tilemap.metersToPixels = f32(tilemap.tileSidePixels) / tilemap.tileSideMeters
 	tilemap.tileChunks = &tile_chunks
-	tileChunk : ^TileChunk = getTileChunk(&tilemap,0,0)
+	tileChunk : ^TileChunk = getTileChunk(tilemap,0,0)
 	assert(tileChunk != nil, "Tilechunk Loaded Incorrectly")
 	upperLeftX : f32
 	upperLeftY : f32	//Origin
@@ -196,16 +222,16 @@ main :: proc() {
 			new_player_pos : TileMapPosition = P.pos
 			new_player_pos.TileRelX += P.velocity.x * DT
 			new_player_pos.TileRelY += P.velocity.y * DT
-			new_player_pos = recanonicalizePosition(&tilemap, new_player_pos)
+			new_player_pos = recanonicalizePosition(tilemap, new_player_pos)
 			PlayerLeft : TileMapPosition = new_player_pos
 			PlayerLeft.TileRelX -= 0.5*player_collider.width/tilemap.metersToPixels
-			PlayerLeft = recanonicalizePosition(&tilemap, PlayerLeft)
+			PlayerLeft = recanonicalizePosition(tilemap, PlayerLeft)
 			PlayerRight : TileMapPosition = new_player_pos
 			PlayerRight.TileRelX += 0.5*player_collider.width/tilemap.metersToPixels
-			PlayerRight = recanonicalizePosition(&tilemap, PlayerRight)
-			if  isTileMapPointEmpty(&tilemap, new_player_pos) &&
-			isTileMapPointEmpty(&tilemap, PlayerLeft) &&
-			isTileMapPointEmpty(&tilemap, PlayerRight){
+			PlayerRight = recanonicalizePosition(tilemap, PlayerRight)
+			if  isTileMapPointEmpty(tilemap, new_player_pos) &&
+			isTileMapPointEmpty(tilemap, PlayerLeft) &&
+			isTileMapPointEmpty(tilemap, PlayerRight){
 				P.pos = new_player_pos
 			}
 			player_collider.x = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(P.pos.AbsTileX) + P.pos.TileRelX) - player_collider.width/2.0
@@ -232,7 +258,7 @@ main :: proc() {
 			for RelColumn :=-20; RelColumn<+20; RelColumn += 1 {
 				Row := int(P.pos.AbsTileY) + RelRow
 				Column := int(P.pos.AbsTileX) + RelColumn
-				tileID := getTileValue(&tilemap, u32(Column), u32(Row))
+				tileID := getTileValue(tilemap, u32(Column), u32(Row))
 				color : rl.Color
 				StartX := i32(Column*tilemap.tileSidePixels) - i32(tilemap.tileSidePixels)/2
 				StartY := i32(Row*tilemap.tileSidePixels) - i32(tilemap.tileSidePixels)/2
