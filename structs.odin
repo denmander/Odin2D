@@ -4,11 +4,32 @@ import rl "vendor:raylib"
 
 
 
+World :: struct{
+	tilemap : ^TileMap
+}
 Direction :: enum {
 	SIDE,
 	DOWN,
 	UP
 }
+GameState :: struct {
+	world_arena : MemoryArena,
+	world: ^World
+}
+GameMemory :: struct{
+	is_initialized : bool,
+	PermanentStorageSize : u64,
+	PermanentStorage : rawptr,
+	TransientStorageSize : u64,
+	TransientStorage : rawptr
+}
+
+MemoryArena :: struct {
+	Size : uint,
+	Base : ^u8,
+	Used : uint
+}
+
 Player :: struct {
 	pos : TileMapPosition,
 	old_pos : rl.Vector2,
@@ -33,8 +54,4 @@ Animation :: struct {
 	current_frame : int,
 	frame_length : f32,
 	name : Animation_Name
-}
-
-World :: struct{
-	tile_map : ^TileMap
 }

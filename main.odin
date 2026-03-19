@@ -57,6 +57,25 @@ roundf32toint :: proc(value: f32) -> int {
 	return int(math.round(value))
 }
 
+InitializeArena :: proc(Arena : ^MemoryArena, Size : uint, Base: ^u8){
+	Arena.Size = Size
+	Arena.Base = Base
+	Arena.Used = 0
+}
+
+PushArray :: proc(Arena : ^MemoryArena, Count : uint, $T : typeid) -> rawptr {
+	return PushSize(Arena, Count*size_of(T))
+}
+PushStruct :: proc(Arena : ^MemoryArena, $T : typeid) -> rawptr{
+	return PushSize(Arena, size_of(T))
+}
+PushSize :: proc(Arena : ^MemoryArena, Size: uint) -> rawptr{
+	assert(Arena.Used + Size <= Arena.Size)
+	Result : rawptr = mem.ptr_offset(Arena.Base, Size)
+	Arena.Used += Size
+	return Result
+}
+
 main :: proc() {
 	track :mem.Tracking_Allocator
 	mem.tracking_allocator_init(&track, context.allocator)
@@ -79,67 +98,61 @@ main :: proc() {
 	Memory : GameMemory
 	Memory.PermanentStorageSize = 64*mem.Megabyte
 	Memory.TransientStorageSize = mem.Gigabyte
+	assert(size_of(GameState) <= Memory.PermanentStorageSize)
 	AllocatedMemory, _ := mem.alloc(int(Memory.PermanentStorageSize + Memory.TransientStorageSize))
 	Memory.PermanentStorage = AllocatedMemory
 	Memory.TransientStorage = mem.ptr_offset((^u8)(Memory.PermanentStorage), Memory.PermanentStorageSize)
-	game_state : GameState
-	InitializeArena(&game_state.world_arena, )
+	game_state : ^GameState = cast(^GameState)Memory.PermanentStorage
+	if !Memory.is_initialized
+	{
+		InitializeArena(&game_state.world_arena, uint(Memory.PermanentStorageSize - size_of(GameState)), mem.ptr_offset(cast(^u8)Memory.PermanentStorage, size_of(GameState)))
 
-	game_state.world = PushStruct(&game_state.world_arena ,world)
-	world : ^World = game_state.world
-	world.tilemap = PushStruct(&game_state.world_arena, tilemap)
+		game_state.world = (^World)(PushStruct(&game_state.world_arena, World))
+		world : ^World = game_state.world
+		world.tilemap = (^TileMap)(PushStruct(&game_state.world_arena, TileMap))
 
-	tilemap : ^TileMap = world.tilemap
+		tilemap : ^TileMap = world.tilemap
 
-	// Set to using 256x256 tile chunks
-	tilemap.ChunkShift = 8
-	tilemap.ChunkMask = (1 << tilemap.ChunkShift) - 1
-	tilemap.tileSideMeters = 1.4
-	tilemap.tileSidePixels = 16
-	tilemap.ChunkDim = 256
-	tilemap.tileChunkCountX = 1
-	tilemap.tileChunkCountY = 1
+		// Set to using 256x256 tile chunks
+		tilemap.ChunkShift = 8
+		tilemap.ChunkMask = (1 << tilemap.ChunkShift) - 1
+		tilemap.tileSideMeters = 1.4
+		tilemap.tileSidePixels = 16
+		tilemap.metersToPixels = f32(tilemap.tileSidePixels) / tilemap.tileSideMeters
+		tilemap.ChunkDim = 256
 
-	tile_chunks : TileChunk
-	chunk: [256][256]u32 = {}
-	TilesPerWidth : u32 = 17
-	TilesPerHeight : u32 = 9
-	for ScreenY : u32 = 0; ScreenY < 32; ScreenY += 1 {
-		for ScreenX : u32 = 0; ScreenX < 32; ScreenX += 1 {
-			for TileY : u32 = 0; TileY < TilesPerHeight; TileY += 1{
-				for TileX : u32 = 0; TileX < TilesPerWidth; TileX += 1{
-					AbsTileX := ScreenX*TilesPerWidth + TileX
-					AbsTileY := ScreenY*TilesPerHeight + TileY
-					setTileValue(world.tilemap,AbsTileX,AbsTileY,0)
+		tilemap.tileChunkCountX = 4
+		tilemap.tileChunkCountY = 4
+
+		tilemap.tileChunks = cast(^TileChunk)PushArray(&game_state.world_arena,uint(tilemap.tileChunkCountX*tilemap.tileChunkCountY),TileChunk)
+		
+		for Y : u32 = 0; Y < tilemap.tileChunkCountY; Y += 1 {
+			for X : u32 = 0; X < tilemap.tileChunkCountX; X += 1 {
+				tilemap.tileChunks[Y*tilemap.tileChunkCountX + X].tiles = cast(^u32)PushArray(&game_state.world_arena,
+																uint(tilemap.ChunkDim*tilemap.ChunkDim),u32)
+			}
+		}
+		TilesPerWidth : u32 = 17
+		TilesPerHeight : u32 = 9
+		for ScreenY : u32 = 0; ScreenY < 32; ScreenY += 1 {
+			for ScreenX : u32 = 0; ScreenX < 32; ScreenX += 1 {
+				for TileY : u32 = 0; TileY < TilesPerHeight; TileY += 1 {
+					for TileX : u32 = 0; TileX < TilesPerWidth; TileX += 1 {
+						AbsTileX := ScreenX*TilesPerWidth + TileX
+						AbsTileY := ScreenY*TilesPerHeight + TileY
+						if (AbsTileX == AbsTileY && TileY % 2 == 0) {
+							setTileValue(world.tilemap,AbsTileX,AbsTileY,1)
+						} else {
+							setTileValue(world.tilemap,AbsTileX,AbsTileY,0)
+						}
+					}
 				}
 			}
 		}
+		Memory.is_initialized = true
 	}
-	/*temp_tiles:[][]u32 = {
-		{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-		{1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1},
-		{1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-		{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-		{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
-	fill_chunk(2,2, &chunk, &temp_tiles)*/ // Fixed test initialization 
-	tile_chunks.tiles = &chunk[0][0]
-	tilemap.metersToPixels = f32(tilemap.tileSidePixels) / tilemap.tileSideMeters
-	tilemap.tileChunks = &tile_chunks
-	tileChunk : ^TileChunk = getTileChunk(tilemap,0,0)
-	assert(tileChunk != nil, "Tilechunk Loaded Incorrectly")
+	world : ^World = game_state.world
+	tilemap: ^TileMap = world.tilemap
 	upperLeftX : f32
 	upperLeftY : f32	//Origin
 	

@@ -48,8 +48,8 @@ getTileValueUnchecked :: proc(tilemap: ^TileMap, tile_chunk: ^TileChunk, tileX, 
 
 getTileValue :: proc(tilemap: ^TileMap, AbsTileX, AbsTileY: u32) -> u32 { //Placeholder
 	chunk_pos : TileChunkPosition = getChunkPos(tilemap, AbsTileX, AbsTileY)
-	tile_map : ^TileChunk = getTileChunk(tilemap, chunk_pos.TileChunkX, chunk_pos.TileChunkY)
-	tile_value : u32 = getChunkTileValue(tilemap, tile_map, AbsTileX, AbsTileY)
+	tile_chunk : ^TileChunk = getTileChunk(tilemap, chunk_pos.TileChunkX, chunk_pos.TileChunkY)
+	tile_value : u32 = getChunkTileValue(tilemap, tile_chunk, AbsTileX, AbsTileY)
 	return tile_value
 }
 
@@ -84,6 +84,27 @@ isTileMapPointEmpty :: proc(tilemap: ^TileMap, CanPos: TileMapPosition) -> bool 
 	tile_chunk_value : u32 = getTileValue(tilemap, CanPos.AbsTileX, CanPos.AbsTileY)	
 	empty : bool = tile_chunk_value == 0
 	return empty
+}
+
+setTileValue :: proc(tilemap: ^TileMap, AbsTileX, AbsTileY, tile_value: u32){
+	chunk_pos : TileChunkPosition = getChunkPos(tilemap, AbsTileX, AbsTileY)
+	tile_chunk : ^TileChunk = getTileChunk(tilemap, chunk_pos.TileChunkX, chunk_pos.TileChunkY)
+	//todo: On demand chunk creation
+	setChunkTileValue(tilemap, tile_chunk, chunk_pos.RelTileX, chunk_pos.RelTileY, tile_value)
+}
+
+setChunkTileValue :: proc(tilemap: ^TileMap, tile_chunk: ^TileChunk, testX, testY, tile_value: u32){
+    chunk_tile_value: u32 = 0
+    if tile_chunk != nil{
+		setTileValueUnchecked(tilemap, tile_chunk, testX, testY, tile_value)
+	}
+}
+
+setTileValueUnchecked :: proc(tilemap: ^TileMap, tile_chunk: ^TileChunk, tileX, tileY, tile_value: u32){
+	assert(tile_chunk != nil)
+	assert(tileX < tilemap.ChunkDim)
+	assert(tileY < tilemap.ChunkDim)
+	tile_chunk.tiles[tileY*tilemap.ChunkDim +tileX] = tile_value
 }
 
 canonicalizeCoord :: proc(tilemap: ^TileMap, Tile : ^u32, TileRel: ^f32)	{
