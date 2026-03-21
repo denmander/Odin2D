@@ -95,34 +95,34 @@ main :: proc() {
 	rl.SetWindowPosition(50,50)
 	rl.SetWindowState({.WINDOW_RESIZABLE})
 	rl.SetTargetFPS(60)
-	Memory : GameMemory
+	Memory : GameMemory = {}
 	Memory.PermanentStorageSize = 64*mem.Megabyte
 	Memory.TransientStorageSize = mem.Gigabyte
 	assert(size_of(GameState) <= Memory.PermanentStorageSize)
 	AllocatedMemory, _ := mem.alloc(int(Memory.PermanentStorageSize + Memory.TransientStorageSize))
 	Memory.PermanentStorage = AllocatedMemory
-	Memory.TransientStorage = mem.ptr_offset((^u8)(Memory.PermanentStorage), Memory.PermanentStorageSize)
+	Memory.TransientStorage = mem.ptr_offset(cast(^u8)(Memory.PermanentStorage), Memory.PermanentStorageSize)
 	game_state : ^GameState = cast(^GameState)Memory.PermanentStorage
 	if !Memory.is_initialized
 	{
 		InitializeArena(&game_state.world_arena, uint(Memory.PermanentStorageSize - size_of(GameState)), mem.ptr_offset(cast(^u8)Memory.PermanentStorage, size_of(GameState)))
 
-		game_state.world = (^World)(PushStruct(&game_state.world_arena, World))
+		game_state.world = cast(^World)(PushStruct(&game_state.world_arena, World))
 		world : ^World = game_state.world
-		world.tilemap = (^TileMap)(PushStruct(&game_state.world_arena, TileMap))
+		world.tilemap = cast(^TileMap)(PushStruct(&game_state.world_arena, TileMap))
 
 		tilemap : ^TileMap = world.tilemap
 
 		// Set to using 256x256 tile chunks
-		tilemap.ChunkShift = 8
+		tilemap.ChunkShift = 4
 		tilemap.ChunkMask = (1 << tilemap.ChunkShift) - 1
+		tilemap.ChunkDim = 1 << tilemap.ChunkShift
 		tilemap.tileSideMeters = 1.4
 		tilemap.tileSidePixels = 16
 		tilemap.metersToPixels = f32(tilemap.tileSidePixels) / tilemap.tileSideMeters
-		tilemap.ChunkDim = 256
 
-		tilemap.tileChunkCountX = 4
-		tilemap.tileChunkCountY = 4
+		tilemap.tileChunkCountX = 128
+		tilemap.tileChunkCountY = 128
 
 		tilemap.tileChunks = cast(^TileChunk)PushArray(&game_state.world_arena,uint(tilemap.tileChunkCountX*tilemap.tileChunkCountY),TileChunk)
 		
@@ -140,7 +140,7 @@ main :: proc() {
 					for TileX : u32 = 0; TileX < TilesPerWidth; TileX += 1 {
 						AbsTileX := ScreenX*TilesPerWidth + TileX
 						AbsTileY := ScreenY*TilesPerHeight + TileY
-						if (AbsTileX == AbsTileY && TileY % 2 == 0) {
+						if (TileX == TileY && TileY%2 == 0) {
 							setTileValue(world.tilemap,AbsTileX,AbsTileY,1)
 						} else {
 							setTileValue(world.tilemap,AbsTileX,AbsTileY,0)
@@ -288,8 +288,8 @@ main :: proc() {
 						color = rl.LIME
 						//rl.DrawRectangle(i32(Column*tilemap.tileSidePixels),i32(Row*tilemap.tileSidePixels),i32(tilemap.tileSidePixels),i32(tilemap.tileSidePixels),rl.LIME)
 					}
-					rl.DrawRectangle(StartX,StartY,i32(tilemap.tileSidePixels),i32(tilemap.tileSidePixels),color)
 				}
+				rl.DrawRectangle(StartX,StartY,i32(tilemap.tileSidePixels),i32(tilemap.tileSidePixels),color)
 			}
 		}
 		draw_animation(current_anim, {upperLeftX + f32(tilemap.tileSidePixels*int(P.pos.AbsTileX)) + tilemap.metersToPixels*P.pos.TileRelX,
@@ -305,9 +305,9 @@ main :: proc() {
 
 		rl.EndMode2D()
 		rl.EndDrawing()
-		//free_all(context.temp_allocator)
+		free_all(context.temp_allocator)
 	}
 
 	rl.CloseWindow()
-	//free_all(context.temp_allocator)
+	free_all(context.temp_allocator)
 }

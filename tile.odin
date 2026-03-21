@@ -49,7 +49,7 @@ getTileValueUnchecked :: proc(tilemap: ^TileMap, tile_chunk: ^TileChunk, tileX, 
 getTileValue :: proc(tilemap: ^TileMap, AbsTileX, AbsTileY: u32) -> u32 { //Placeholder
 	chunk_pos : TileChunkPosition = getChunkPos(tilemap, AbsTileX, AbsTileY)
 	tile_chunk : ^TileChunk = getTileChunk(tilemap, chunk_pos.TileChunkX, chunk_pos.TileChunkY)
-	tile_value : u32 = getChunkTileValue(tilemap, tile_chunk, AbsTileX, AbsTileY)
+	tile_value : u32 = getChunkTileValue(tilemap, tile_chunk, chunk_pos.RelTileX, chunk_pos.RelTileY)
 	return tile_value
 }
 
@@ -94,7 +94,6 @@ setTileValue :: proc(tilemap: ^TileMap, AbsTileX, AbsTileY, tile_value: u32){
 }
 
 setChunkTileValue :: proc(tilemap: ^TileMap, tile_chunk: ^TileChunk, testX, testY, tile_value: u32){
-    chunk_tile_value: u32 = 0
     if tile_chunk != nil{
 		setTileValueUnchecked(tilemap, tile_chunk, testX, testY, tile_value)
 	}
