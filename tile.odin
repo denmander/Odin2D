@@ -3,11 +3,11 @@ package game
 TileMapPosition :: struct{
 	//These are fixed point tile locations.
 	//24 high bits for tile chunk index, 8 low bits for tile index within the chunk
-	AbsTileX, AbsTileY: u32, 
+	AbsTileX, AbsTileY, AbsTileZ: u32, 
 	TileRelX, TileRelY: f32 "Tile relative X and Y"
 }
 TileChunkPosition :: struct{
-	TileChunkX, TileChunkY : u32,
+	TileChunkX, TileChunkY, TileChunkZ : u32,
 	RelTileX, RelTileY : u32
 }
 TileChunk :: struct{	//Represents a tilechunk as a Matrix of size [X x Y x Z]

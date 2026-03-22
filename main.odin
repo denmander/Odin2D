@@ -103,6 +103,12 @@ main :: proc() {
 	Memory.PermanentStorage = AllocatedMemory
 	Memory.TransientStorage = mem.ptr_offset(cast(^u8)(Memory.PermanentStorage), Memory.PermanentStorageSize)
 	game_state : ^GameState = cast(^GameState)Memory.PermanentStorage
+	game_state.PlayerP = TileMapPosition{
+		AbsTileX = 20,
+		AbsTileY = 10,
+		TileRelX = 5.0,
+		TileRelY = 5.0
+	}
 	if !Memory.is_initialized
 	{
 		InitializeArena(&game_state.world_arena, uint(Memory.PermanentStorageSize - size_of(GameState)), mem.ptr_offset(cast(^u8)Memory.PermanentStorage, size_of(GameState)))
@@ -166,16 +172,10 @@ main :: proc() {
 	accumulated_time : f32
 	P : Player = {
 		speed = 4.0,
-		pos = TileMapPosition{
-			AbsTileX = 20,
-			AbsTileY = 10,
-			TileRelX = 5.0,
-			TileRelY = 5.0
-		}
 	}
 	player_collider := rl.Rectangle{
-		tilemap.tileSideMeters*tilemap.metersToPixels*f32(P.pos.AbsTileX) + P.pos.TileRelX,
-		tilemap.tileSideMeters*tilemap.metersToPixels*f32(P.pos.AbsTileY) + P.pos.TileRelY,
+		tilemap.tileSideMeters*tilemap.metersToPixels*f32(game_state.PlayerP.AbsTileX) + game_state.PlayerP.TileRelX,
+		tilemap.tileSideMeters*tilemap.metersToPixels*f32(game_state.PlayerP.AbsTileY) + game_state.PlayerP.TileRelY,
 		10,
 		6,
 	}
@@ -229,10 +229,10 @@ main :: proc() {
 				P.velocity = math.lerp(P.velocity, rl.Vector2{0,0}, f32(0.8))
 				if current_anim.name != .idle {current_anim = player_idle}
 			}
-			player_collider.x = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(P.pos.AbsTileX) + P.pos.TileRelX + P.velocity.x) * DT - player_collider.width/2.0
-			player_collider.y = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(P.pos.AbsTileY) + P.pos.TileRelY + P.velocity.y) * DT - player_collider.height
+			player_collider.x = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileX) + game_state.PlayerP.TileRelX + P.velocity.x) * DT - player_collider.width/2.0
+			player_collider.y = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileY) + game_state.PlayerP.TileRelY + P.velocity.y) * DT - player_collider.height
 			
-			new_player_pos : TileMapPosition = P.pos
+			new_player_pos : TileMapPosition = game_state.PlayerP
 			new_player_pos.TileRelX += P.velocity.x * DT
 			new_player_pos.TileRelY += P.velocity.y * DT
 			new_player_pos = recanonicalizePosition(tilemap, new_player_pos)
@@ -245,14 +245,13 @@ main :: proc() {
 			if  isTileMapPointEmpty(tilemap, new_player_pos) &&
 			isTileMapPointEmpty(tilemap, PlayerLeft) &&
 			isTileMapPointEmpty(tilemap, PlayerRight){
-				P.pos = new_player_pos
+				game_state.PlayerP = new_player_pos
 			}
-			player_collider.x = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(P.pos.AbsTileX) + P.pos.TileRelX) - player_collider.width/2.0
-			player_collider.y = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(P.pos.AbsTileY) + P.pos.TileRelY) - player_collider.height
+			player_collider.x = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileX) + game_state.PlayerP.TileRelX) - player_collider.width/2.0
+			player_collider.y = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileY) + game_state.PlayerP.TileRelY) - player_collider.height
 			accumulated_time -= DT
 		}
 		blend := accumulated_time / DT
-		//player_render_pos := math.lerp(P.old_pos, P.pos, blend)
 		
 		rl.BeginDrawing()
 		rl.ClearBackground({110, 184, 168, 255})
@@ -263,14 +262,14 @@ main :: proc() {
 		camera := rl.Camera2D {
 			zoom = screen_height/PixelWindowHeight,
 			offset = {f32(rl.GetScreenWidth()/2),screen_height/2},
-			target = {f32(P.pos.AbsTileX)*f32(tilemap.tileSidePixels)+P.pos.TileRelX*tilemap.metersToPixels,f32(P.pos.AbsTileY)*f32(tilemap.tileSidePixels)+P.pos.TileRelY*tilemap.metersToPixels}
+			target = {f32(game_state.PlayerP.AbsTileX)*f32(tilemap.tileSidePixels)+game_state.PlayerP.TileRelX*tilemap.metersToPixels,f32(game_state.PlayerP.AbsTileY)*f32(tilemap.tileSidePixels)+game_state.PlayerP.TileRelY*tilemap.metersToPixels}
 		}
 		
 		rl.BeginMode2D(camera)
 		for RelRow :=-10; RelRow<10; RelRow += 1 {
 			for RelColumn :=-20; RelColumn<+20; RelColumn += 1 {
-				Row := int(P.pos.AbsTileY) + RelRow
-				Column := int(P.pos.AbsTileX) + RelColumn
+				Row := int(game_state.PlayerP.AbsTileY) + RelRow
+				Column := int(game_state.PlayerP.AbsTileX) + RelColumn
 				tileID := getTileValue(tilemap, u32(Column), u32(Row))
 				color : rl.Color
 				StartX := i32(Column*tilemap.tileSidePixels) - i32(tilemap.tileSidePixels)/2
@@ -278,23 +277,20 @@ main :: proc() {
 				
 				if tileID == 1 {
 					color = {150, 200, 200, 255}
-					//rl.DrawRectangle(i32(Column*tilemap.tileSidePixels),i32(Row*tilemap.tileSidePixels),i32(tilemap.tileSidePixels),i32(tilemap.tileSidePixels),{150, 200, 200, 255})
 				}
 				else {
-					if Column == int(P.pos.AbsTileX) && Row == int(P.pos.AbsTileY) {
+					if Column == int(game_state.PlayerP.AbsTileX) && Row == int(game_state.PlayerP.AbsTileY) {
 						color = rl.BLACK
-						//rl.DrawRectangle(i32(Column*tilemap.tileSidePixels),i32(Row*tilemap.tileSidePixels),i32(tilemap.tileSidePixels),i32(tilemap.tileSidePixels),rl.BLACK)	
 					} else {
 						color = rl.LIME
-						//rl.DrawRectangle(i32(Column*tilemap.tileSidePixels),i32(Row*tilemap.tileSidePixels),i32(tilemap.tileSidePixels),i32(tilemap.tileSidePixels),rl.LIME)
 					}
 				}
 				rl.DrawRectangle(StartX,StartY,i32(tilemap.tileSidePixels),i32(tilemap.tileSidePixels),color)
 			}
 		}
-		draw_animation(current_anim, {upperLeftX + f32(tilemap.tileSidePixels*int(P.pos.AbsTileX)) + tilemap.metersToPixels*P.pos.TileRelX,
-				upperLeftY + f32(tilemap.tileSidePixels*int(P.pos.AbsTileY)) + tilemap.metersToPixels*P.pos.TileRelY}, int(P.dir), P.flip)
-		rl.DrawCircleV({f32(P.pos.AbsTileX)*f32(tilemap.tileSidePixels),f32(P.pos.AbsTileY)*f32(tilemap.tileSidePixels)},1,rl.RED)
+		draw_animation(current_anim, {upperLeftX + f32(tilemap.tileSidePixels*int(game_state.PlayerP.AbsTileX)) + tilemap.metersToPixels*game_state.PlayerP.TileRelX,
+				upperLeftY + f32(tilemap.tileSidePixels*int(game_state.PlayerP.AbsTileY)) + tilemap.metersToPixels*game_state.PlayerP.TileRelY}, int(P.dir), P.flip)
+		rl.DrawCircleV({f32(game_state.PlayerP.AbsTileX)*f32(tilemap.tileSidePixels),f32(game_state.PlayerP.AbsTileY)*f32(tilemap.tileSidePixels)},1,rl.RED)
 		rl.DrawRectangleRec(player_collider,{0,50,150,100}) //Debug Player Collider
 		
 		if rl.IsKeyPressed(.F2) {

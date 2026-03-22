@@ -14,7 +14,8 @@ Direction :: enum {
 }
 GameState :: struct {
 	world_arena : MemoryArena,
-	world: ^World
+	world: ^World,
+	PlayerP : TileMapPosition
 }
 GameMemory :: struct{
 	is_initialized : bool,
@@ -31,7 +32,6 @@ MemoryArena :: struct {
 }
 
 Player :: struct {
-	pos : TileMapPosition,
 	old_pos : rl.Vector2,
 	velocity : rl.Vector2,
 	speed : f32,
