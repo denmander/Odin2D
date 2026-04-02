@@ -1,9 +1,11 @@
 #+feature dynamic-literals
 package game
 
+import "core:dynlib"
 import "core:math"
 import "core:mem"
 import "core:fmt"
+import "core:time"
 import "core:os"
 import rl "vendor:raylib"
 
@@ -76,6 +78,59 @@ PushSize :: proc(Arena : ^MemoryArena, Size: uint) -> rawptr{
 	return Result
 }
 
+when ODIN_OS == .Windows {
+	DLL_EXT :: ".dll"
+} else when ODIN_OS == .Darwin {
+	DLL_EXT :: ".dylib"
+} else {
+	DLL_EXT :: ".so"
+}
+
+GAME_DLL_DIR :: "build/"
+GAME_DLL_PATH :: GAME_DLL_DIR + "game" + DLL_EXT
+
+GameAPI :: struct{
+	lib : dynlib.Library,
+	init_window : proc(),
+	init : proc(),
+	update : proc() -> bool,
+	shutdown : proc(),
+	memory : proc() -> rawptr,
+	hot_reloaded : proc(mem : rawptr),
+	modification_time : os.File_Time,
+	api_version : int,
+	is_valid : bool
+}
+
+copy_dll :: proc(to : string) -> bool {
+	return true
+}
+
+LoadGameAPI :: proc(api_version: int) -> (api: GameAPI, ok: bool) {
+	mod_time, mod_time_error := os.last_write_time_by_name(GAME_DLL_PATH)
+	if mod_time_error != os.ERROR_NONE {
+		fmt.printfln(
+			"Failed getting last write time of " + GAME_DLL_PATH + ", error code {1}",
+			mod_time_error,
+		)
+		return
+	}
+	game_dll_name := fmt.tprintf(GAME_DLL_DIR + "game_{0}" + DLL_EXT, api.api_version)
+	copy_dll(game_dll_name) or_return
+	// This proc matches the names of the fields in Game_API to symbols in the
+	// game DLL. It actually looks for symbols starting with `game_`, which is
+	// why the argument `"game_"` is there.
+	_, ok = dynlib.initialize_symbols(&api, game_dll_name, "game_", "lib")
+	if !ok {
+		fmt.printfln("Failed initializing symbols: {0}", dynlib.last_error())
+	}
+	api.api_version = api_version
+	api.modification_time = mod_time
+	ok = true
+
+	return
+}
+
 main :: proc() {
 	track :mem.Tracking_Allocator
 	mem.tracking_allocator_init(&track, context.allocator)
@@ -90,11 +145,7 @@ main :: proc() {
 		}
 		mem.tracking_allocator_destroy(&track)
 	}
-	rl.SetConfigFlags({.VSYNC_HINT})
-	rl.InitWindow(1280,720,"Game")
-	rl.SetWindowPosition(50,50)
-	rl.SetWindowState({.WINDOW_RESIZABLE})
-	rl.SetTargetFPS(60)
+	
 	Memory : GameMemory = {}
 	Memory.PermanentStorageSize = 64*mem.Megabyte
 	Memory.TransientStorageSize = mem.Gigabyte
@@ -120,7 +171,7 @@ main :: proc() {
 		tilemap : ^TileMap = world.tilemap
 
 		// Set to using 256x256 tile chunks
-		tilemap.ChunkShift = 4
+		tilemap.ChunkShift = 8
 		tilemap.ChunkMask = (1 << tilemap.ChunkShift) - 1
 		tilemap.ChunkDim = 1 << tilemap.ChunkShift
 		tilemap.tileSideMeters = 1.4
