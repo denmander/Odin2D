@@ -2,8 +2,6 @@ package game
 
 import rl "vendor:raylib"
 
-
-
 World :: struct{
 	tilemap : ^TileMap
 }
@@ -22,7 +20,8 @@ GameMemory :: struct{
 	PermanentStorageSize : u64,
 	PermanentStorage : rawptr,
 	TransientStorageSize : u64,
-	TransientStorage : rawptr
+	TransientStorage : rawptr,
+	run : bool,
 }
 
 MemoryArena :: struct {
@@ -32,7 +31,7 @@ MemoryArena :: struct {
 }
 
 Player :: struct {
-	old_pos : rl.Vector2,
+	collider : rl.Rectangle,
 	velocity : rl.Vector2,
 	speed : f32,
 	dir : Direction,
