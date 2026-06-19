@@ -2,10 +2,10 @@
 package game
 
 import "core:c/libc"
+import "core:path/slashpath"
 import "core:path/filepath"
 import "core:dynlib"
 import "core:log"
-import "core:math"
 import "core:mem"
 import "core:fmt"
 import "core:time"
@@ -24,66 +24,73 @@ GAME_DLL_PATH :: GAME_DLL_DIR + "game" + DLL_EXT
 
 GameAPI :: struct{
 	lib : dynlib.Library,
-	init_window : proc(),
-	init : proc(),
-	update : proc() -> bool,
-	should_run : proc() -> bool,
-	shutdown : proc(),
-	shutdown_window : proc(),
-	memory : proc() -> rawptr,
-	memory_size : proc() -> int,
-	hot_reloaded : proc(mem : rawptr),
-	force_reload : proc() -> bool,
-	force_restart : proc() -> bool,
+	init : App_Init_Proc,
+	update : App_Update_Proc,
+	quit : App_Quit_Proc,
+	reload : App_Reload_Proc,
 	modification_time : time.Time,
-	api_version : int,
-	is_valid : bool
+	version : int,
 }
+App_Init_Proc :: #type proc() -> rawptr
+App_Update_Proc :: #type proc(app_memory: rawptr) -> (quit : bool, reload: bool)
+App_Quit_Proc :: #type proc(app_memory: rawptr)
+App_Reload_Proc :: #type proc(app_memory: rawptr)
 
 copy_dll :: proc(to : string) -> bool {
-	copy_err := os.copy_file(to, GAME_DLL_PATH)
+	copy_err := os.copy_file(to, "game" + DLL_EXT)
 	if copy_err != nil {
-		fmt.printfln("Failed to copy " + GAME_DLL_PATH + " to {0}: %v", to, copy_err)
+		fmt.printfln("Failed to copy " + "game" + DLL_EXT + " to {0}: %v", to, copy_err)
 		return false
 	}
 	return true
 }
 
-LoadGameAPI :: proc(api_version: int) -> (api: GameAPI, ok: bool) {
-	mod_time, mod_time_error := os.last_write_time_by_name(GAME_DLL_PATH)
-	if mod_time_error != os.ERROR_NONE {
-		fmt.printfln(
-			"Failed getting last write time of " + GAME_DLL_PATH + ", error code {1}",
-			mod_time_error,
-		)
+LoadGameAPI :: proc(version: int) -> (api: GameAPI, ok: bool) {
+	path := slashpath.join({fmt.tprintf("game%i.dll", version)}, context.temp_allocator)
+	copy_dll(path) or_return
+	load_library : bool
+	api.lib, load_library = dynlib.load_library(path)
+	fmt.println(path, "\n")
+	if !load_library {
+		fmt.eprintln(dynlib.last_error())
 		return
 	}
-	game_dll_name := fmt.tprintf(GAME_DLL_DIR + "game_{0}" + DLL_EXT, api.api_version)
-	copy_dll(game_dll_name) or_return
-	// This proc matches the names of the fields in Game_API to symbols in the
-	// game DLL. It actually looks for symbols starting with `game_`, which is
-	// why the argument `"game_"` is there.
-	_, ok = dynlib.initialize_symbols(&api, game_dll_name, "game_", "lib")
-	if !ok {
-		fmt.printfln("Failed initializing symbols: {0}", dynlib.last_error())
+	fmt.println("DLL %q loaded successfully", path)
+	api.init = auto_cast(dynlib.symbol_address(api.lib, "init"))
+	if api.init == nil {
+		fmt.eprint("symbol address('init') failed\n")
+		return
 	}
-
-	api.api_version = api_version
-	api.modification_time = mod_time
-	ok = true
-
-	return
+	api.update = auto_cast(dynlib.symbol_address(api.lib, "update"))
+	if api.update == nil {
+		fmt.eprint("symbol address('update') failed\n")
+		return
+	}
+	api.quit = auto_cast(dynlib.symbol_address(api.lib, "quit"))
+	if api.quit == nil {
+		fmt.eprint("symbol address('quit') failed\n")
+		return
+	}
+	api.reload = auto_cast(dynlib.symbol_address(api.lib, "reload"))
+	if api.reload == nil {
+		fmt.eprint("symbol address('reload') failed\n")
+		return
+	}
+	
+	api.version = version
+	api.modification_time = time.now()
+	return api, true
 }
 
 UnloadGameAPI :: proc(api: ^GameAPI) {
 	if api.lib != nil {
-		if !dynlib.unload_library(api.lib) {
-			fmt.printfln("Failed unloading lib: {0}", dynlib.last_error())
-		}
+		dynlib.unload_library(api.lib)
 	}
-	if os.remove(fmt.tprintf(GAME_DLL_DIR + "game_{0}" + DLL_EXT, api.api_version)) != nil {
-		fmt.printfln("Failed to remove {0}game_{1}" + DLL_EXT + "copy", GAME_DLL_DIR, api.api_version)
-	}
+}
+
+ShouldReload :: proc(api: ^GameAPI) -> bool {
+	path := slashpath.join({fmt.tprintf("game%i.dll", api.version + 1)}, context.temp_allocator)
+	return os.exists(path)
 }
 
 main :: proc() {
@@ -91,7 +98,7 @@ main :: proc() {
 	exe_path := os.args[0]
 	exe_dir := filepath.dir(string(exe_path))
 	os.set_working_directory(exe_dir)
-
+	fmt.println(exe_dir, "\n")
 	context.logger = log.create_console_logger()
 
 	default_alocator := context.allocator
@@ -111,52 +118,23 @@ main :: proc() {
 
 	game_api_version := 0
 	game_api, game_api_ok := LoadGameAPI(game_api_version)
-	if !game_api_ok {
-		fmt.println("Failed to load Game API")
-		return
-	}
+	assert(game_api_ok == true, "game api couldn't be loaded.")
 
-	game_api_version += 1
-	game_api.init_window()
-	game_api.init()
-	old_game_apis := make([dynamic]GameAPI, default_alocator)
-	
-	editing := false
-	for game_api.should_run() {
-		game_api.update()
-		force_reload := game_api.force_reload()
-		force_restart := game_api.force_restart()
-		reload := force_reload || force_restart
-		game_dll_mod, game_dll_mod_err := os.last_write_time_by_name(GAME_DLL_PATH)
-		if game_dll_mod_err == os.ERROR_NONE && game_api.modification_time != game_dll_mod {
+	game_memory := game_api.init()
+	quit := false
+	reload := false
+	for quit == false {
+		quit, reload = game_api.update(game_memory)
+		if ShouldReload(&game_api){
 			reload = true
 		}
 		if reload {
-			new_game_api, new_game_api_ok := LoadGameAPI(game_api_version)
+			new_game_api, new_game_api_ok := LoadGameAPI(game_api.version + 1)
 			if new_game_api_ok {
-				force_restart = force_restart || game_api.memory_size() != new_game_api.memory_size()
-				if !force_restart {
-					// normal hot reload
-					append(&old_game_apis, game_api)
-					game_memory := game_api.memory()
-					game_api = new_game_api
-					game_api.hot_reloaded(game_memory)
-				} else {
-					// full reset, like closing and opening the game
-					game_api.shutdown()
-					reset_tracking_allocator(&tracking_allocator)
-					for &g in old_game_apis{
-						UnloadGameAPI(&g)
-					}
-					clear(&old_game_apis)
-					UnloadGameAPI(&game_api)
-					game_api = new_game_api
-					game_api.init()
-				}
-				game_api_version += 1
+				game_api = new_game_api
+				game_api.reload(game_memory)
 			}
 		}
-		
 		if len(tracking_allocator.bad_free_array) > 0 {
 			for b in tracking_allocator.bad_free_array {
 				log.errorf("Bad free at: %v", b.location)
@@ -166,18 +144,13 @@ main :: proc() {
 		}
 		free_all(context.temp_allocator)
 	}
-
 	free_all(context.temp_allocator)
-	game_api.shutdown()
 	if reset_tracking_allocator(&tracking_allocator) {
 		// Prevents the game from closing without showing memory leaks
 		libc.getchar()
 	}
-	for &g in old_game_apis {
-		UnloadGameAPI(&g)
-	}
-	delete(old_game_apis)
-	game_api.shutdown_window()
 	UnloadGameAPI(&game_api)
+	game_api.quit(game_memory)
+	log.warn("Quitting...")
 	mem.tracking_allocator_destroy(&tracking_allocator)
 }

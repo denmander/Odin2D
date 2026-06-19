@@ -5,7 +5,7 @@ import "core:math"
 import rl "vendor:raylib"
 
 Memory : ^GameMemory
-game_state : ^GameState
+//game_state : ^GameState
 tilemap : ^TileMap
 
 fill_chunk :: proc(start_x, start_y: int, chunk: ^[256][256]u32, block: ^[][]u32){
@@ -76,15 +76,15 @@ draw_animation :: proc(a: Animation, pos: rl.Vector2, dir_index: int, flip:bool)
 }
 
 @(export)
-game_init :: proc() {
-    Memory = new(GameMemory)
+game_init :: proc() -> rawptr {
+    Memory := new(GameMemory)
 	Memory.PermanentStorageSize = 64*mem.Megabyte
 	Memory.TransientStorageSize = mem.Gigabyte
 	assert(size_of(GameState) <= Memory.PermanentStorageSize)
 	AllocatedMemory, _ := mem.alloc(int(Memory.PermanentStorageSize + Memory.TransientStorageSize))
 	Memory.PermanentStorage = AllocatedMemory
 	Memory.TransientStorage = mem.ptr_offset(cast(^u8)(Memory.PermanentStorage), Memory.PermanentStorageSize)
-	game_state = cast(^GameState)Memory.PermanentStorage
+	game_state := cast(^GameState)Memory.PermanentStorage
 	game_state.PlayerP = TileMapPosition{
 		AbsTileX = 20,
 		AbsTileY = 10,
@@ -166,10 +166,11 @@ game_init :: proc() {
 		name = .idle
 	}
 	current_anim = player_idle
-	game_hot_reloaded(Memory)
+	game_init_window()
+	game_reload(Memory)
+	return Memory
 }
 
-@(export)
 game_init_window :: proc() {
 	rl.SetConfigFlags({.VSYNC_HINT})
 	rl.InitWindow(1280,720,"Game")
@@ -184,7 +185,7 @@ P : Player
 current_anim : Animation
 player_idle : Animation
 player_walk : Animation
-update :: proc() {
+update :: proc(game_state: ^GameState) -> (quit : bool) {
 	accumulated_time += rl.GetFrameTime() //Fixed timestep
 	for accumulated_time >= DT {
 		dir : rl.Vector2
@@ -238,12 +239,16 @@ update :: proc() {
 		P.collider.y = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileY) + game_state.PlayerP.TileRelY) - P.collider.height
 		accumulated_time -= DT
 	}
+	if rl.IsKeyPressed(.F8) {
+		quit = true
+	} else { quit = false}
+	return
 	//blend := accumulated_time / DT
 }
 
 PixelWindowHeight :: 180
 
-draw :: proc() {
+draw :: proc(game_state: ^GameState) {
 	rl.BeginDrawing()
 	rl.ClearBackground({110, 184, 168, 255})
 	
@@ -289,33 +294,24 @@ draw :: proc() {
 }
 
 @(export)
-game_update :: proc() -> bool {
-	update()
-	draw()
+game_update :: proc(Memory : ^GameMemory) -> (quit : bool) {
+	game_state: ^GameState = auto_cast(Memory)
+	quit = update(game_state)
+	draw(game_state)
 
 	free_all(context.temp_allocator)
-	return true
+	return
 }
 
 @(export)
-game_shutdown :: proc() {
-
+game_quit :: proc(mem: ^GameMemory) {
+	free(mem)
+	rl.CloseWindow()
 }
 
 @(export)
-game_memory :: proc() -> rawptr {
-	return Memory
-}
-
-@(export)
-game_hot_reloaded :: proc(mem: rawptr) {
+game_reload :: proc(mem: rawptr) {
 	Memory = (^GameMemory)(mem)
-}
-
-@(export)
-game_should_run :: proc() -> bool {
-	if rl.WindowShouldClose() {
-		return false
-	}
-	return Memory.run
+	game_state := (^GameState)(Memory)
+	tilemap = game_state.world.tilemap
 }
