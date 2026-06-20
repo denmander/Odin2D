@@ -39,7 +39,7 @@ PushStruct :: proc(Arena : ^MemoryArena, $T : typeid) -> rawptr{
 }
 PushSize :: proc(Arena : ^MemoryArena, Size: uint) -> rawptr{
 	assert(Arena.Used + Size <= Arena.Size)
-	Result : rawptr = mem.ptr_offset(Arena.Base, Size)
+	Result : rawptr = mem.ptr_offset(Arena.Base, Arena.Used)
 	Arena.Used += Size
 	return Result
 }
@@ -75,9 +75,8 @@ draw_animation :: proc(a: Animation, pos: rl.Vector2, dir_index: int, flip:bool)
 	rl.DrawTexturePro(a.texture, source, dest, {dest.width/2.0,dest.height},0,rl.WHITE)
 }
 
-@(export)
-game_init :: proc() -> rawptr {
-    Memory := new(GameMemory)
+@(export) game_init :: proc() -> rawptr {
+	Memory := new(GameMemory)
 	Memory.PermanentStorageSize = 64*mem.Megabyte
 	Memory.TransientStorageSize = mem.Gigabyte
 	assert(size_of(GameState) <= Memory.PermanentStorageSize)
@@ -102,7 +101,7 @@ game_init :: proc() -> rawptr {
 		tilemap = world.tilemap
 
 		// Set to using 256x256 tile chunks
-		tilemap.ChunkShift = 8
+		tilemap.ChunkShift = 4
 		tilemap.ChunkMask = (1 << tilemap.ChunkShift) - 1
 		tilemap.ChunkDim = 1 << tilemap.ChunkShift
 		tilemap.tileSideMeters = 1.4
@@ -167,7 +166,7 @@ game_init :: proc() -> rawptr {
 	}
 	current_anim = player_idle
 	game_init_window()
-	game_reload(Memory)
+
 	return Memory
 }
 
@@ -293,24 +292,21 @@ draw :: proc(game_state: ^GameState) {
 	rl.EndDrawing()
 }
 
-@(export)
-game_update :: proc(Memory : ^GameMemory) -> (quit : bool) {
+@(export) game_update :: proc() -> (quit : bool) {
 	game_state: ^GameState = auto_cast(Memory)
 	quit = update(game_state)
 	draw(game_state)
 
 	free_all(context.temp_allocator)
-	return
+	return true
 }
 
-@(export)
-game_quit :: proc(mem: ^GameMemory) {
+@(export) game_quit :: proc(mem: rawptr) {
 	free(mem)
 	rl.CloseWindow()
 }
 
-@(export)
-game_reload :: proc(mem: rawptr) {
+@(export) game_reload :: proc(mem: rawptr) {
 	Memory = (^GameMemory)(mem)
 	game_state := (^GameState)(Memory)
 	tilemap = game_state.world.tilemap
