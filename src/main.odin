@@ -17,7 +17,7 @@ GameAPI :: struct{
 	version : i32,
 }
 App_Init_Proc :: proc() -> rawptr
-App_Update_Proc :: proc(app_memory: rawptr) -> bool
+App_Update_Proc :: proc() -> bool
 App_Quit_Proc :: proc(app_memory: rawptr)
 App_Reload_Proc :: proc(app_memory: rawptr)
 
@@ -104,7 +104,7 @@ main :: proc() {
 	quit := false
 	reload := false
 	for quit == false {
-		quit = game_api.update(game_memory)
+		quit = game_api.update()
 		if ShouldReload(&game_api){
 			reload = true
 		}
@@ -129,8 +129,8 @@ main :: proc() {
 		// Prevents the game from closing without showing memory leaks
 		libc.getchar()
 	}*/
-	UnloadGameAPI(&game_api)
 	game_api.quit(game_memory)
+	UnloadGameAPI(&game_api)
 	log.warn("Quitting...")
 	//mem.tracking_allocator_destroy(&tracking_allocator)
 }

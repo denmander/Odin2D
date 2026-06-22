@@ -5,7 +5,7 @@ import "core:math"
 import rl "vendor:raylib"
 
 Memory : ^GameMemory
-//game_state : ^GameState
+game_state : ^GameState
 tilemap : ^TileMap
 
 fill_chunk :: proc(start_x, start_y: int, chunk: ^[256][256]u32, block: ^[][]u32){
@@ -83,7 +83,7 @@ draw_animation :: proc(a: Animation, pos: rl.Vector2, dir_index: int, flip:bool)
 	AllocatedMemory, _ := mem.alloc(int(Memory.PermanentStorageSize + Memory.TransientStorageSize))
 	Memory.PermanentStorage = AllocatedMemory
 	Memory.TransientStorage = mem.ptr_offset(cast(^u8)(Memory.PermanentStorage), Memory.PermanentStorageSize)
-	game_state := cast(^GameState)Memory.PermanentStorage
+	game_state = cast(^GameState)Memory.PermanentStorage
 	game_state.PlayerP = TileMapPosition{
 		AbsTileX = 20,
 		AbsTileY = 10,
@@ -241,7 +241,7 @@ update :: proc(game_state: ^GameState) -> (quit : bool) {
 	if rl.IsKeyPressed(.F8) {
 		quit = true
 	} else { quit = false}
-	return
+	return quit
 	//blend := accumulated_time / DT
 }
 
@@ -293,12 +293,11 @@ draw :: proc(game_state: ^GameState) {
 }
 
 @(export) game_update :: proc() -> (quit : bool) {
-	game_state: ^GameState = auto_cast(Memory)
 	quit = update(game_state)
 	draw(game_state)
 
 	free_all(context.temp_allocator)
-	return true
+	return quit
 }
 
 @(export) game_quit :: proc(mem: rawptr) {
@@ -308,6 +307,6 @@ draw :: proc(game_state: ^GameState) {
 
 @(export) game_reload :: proc(mem: rawptr) {
 	Memory = (^GameMemory)(mem)
-	game_state := (^GameState)(Memory)
+	game_state = cast(^GameState)Memory.PermanentStorage
 	tilemap = game_state.world.tilemap
 }
