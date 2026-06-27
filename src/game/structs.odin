@@ -13,7 +13,8 @@ Direction :: enum {
 GameState :: struct {
 	world_arena : MemoryArena,
 	world: ^World,
-	PlayerP : TileMapPosition
+	PlayerP : TileMapPosition,
+	player : Player
 }
 GameMemory :: struct{
 	is_initialized : bool,

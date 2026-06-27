@@ -75,6 +75,9 @@ draw_animation :: proc(a: Animation, pos: rl.Vector2, dir_index: int, flip:bool)
 	rl.DrawTexturePro(a.texture, source, dest, {dest.width/2.0,dest.height},0,rl.WHITE)
 }
 
+current_anim : Animation
+player_idle : Animation
+player_walk : Animation
 @(export) game_init :: proc() -> rawptr {
 	Memory := new(GameMemory)
 	Memory.PermanentStorageSize = 64*mem.Megabyte
@@ -141,10 +144,10 @@ draw_animation :: proc(a: Animation, pos: rl.Vector2, dir_index: int, flip:bool)
 	world : ^World = game_state.world
 	tilemap: ^TileMap = world.tilemap
 	
-	P = {
+	game_state.player = {
 		speed = 4.0,
 	}
-	P.collider = rl.Rectangle{
+	game_state.player.collider = rl.Rectangle{
 		tilemap.tileSideMeters*tilemap.metersToPixels*f32(game_state.PlayerP.AbsTileX) + game_state.PlayerP.TileRelX,
 		tilemap.tileSideMeters*tilemap.metersToPixels*f32(game_state.PlayerP.AbsTileY) + game_state.PlayerP.TileRelY,
 		10,
@@ -165,12 +168,11 @@ draw_animation :: proc(a: Animation, pos: rl.Vector2, dir_index: int, flip:bool)
 		name = .idle
 	}
 	current_anim = player_idle
-	game_init_window()
 
 	return Memory
 }
 
-game_init_window :: proc() {
+@(export) game_init_window :: proc() {
 	rl.SetConfigFlags({.VSYNC_HINT})
 	rl.InitWindow(1280,720,"Game")
 	rl.SetWindowPosition(10,10)
@@ -180,62 +182,58 @@ game_init_window :: proc() {
 
 DT :: 1.0/60.0
 accumulated_time : f32
-P : Player
-current_anim : Animation
-player_idle : Animation
-player_walk : Animation
 update :: proc(game_state: ^GameState) -> (quit : bool) {
 	accumulated_time += rl.GetFrameTime() //Fixed timestep
 	for accumulated_time >= DT {
 		dir : rl.Vector2
 		if rl.IsKeyDown(.LEFT_SHIFT) || rl.IsGamepadButtonDown(0, rl.GamepadButton.RIGHT_FACE_RIGHT){
-			P.speed = 10.0
-		} else { P.speed = 4.0}
+			game_state.player.speed = 10.0
+		} else {game_state.player.speed = 4.0}
 		if rl.IsKeyDown(.UP) || rl.IsKeyDown(.W) || (rl.GetGamepadAxisMovement(0, rl.GamepadAxis.LEFT_Y) < -0.1) {
 			dir += {0,-1}
-			P.dir = Direction.UP
+			game_state.player.dir = Direction.UP
 		}
 		if rl.IsKeyDown(.DOWN) || rl.IsKeyDown(.S) || (rl.GetGamepadAxisMovement(0, rl.GamepadAxis.LEFT_Y) > 0.1)  {
 			dir += {0,1}
-			P.dir = Direction.DOWN
+			game_state.player.dir = Direction.DOWN
 		}
 		if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) || (rl.GetGamepadAxisMovement(0, rl.GamepadAxis.LEFT_X) < -0.1)  {
 			dir += {-1,0}
-			P.flip = true
-			P.dir = Direction.SIDE
+			game_state.player.flip = true
+			game_state.player.dir = Direction.SIDE
 		}
 		if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) || (rl.GetGamepadAxisMovement(0, rl.GamepadAxis.LEFT_X) > 0.1)  {
 			dir += {1,0}
-			P.flip = false
-			P.dir = Direction.SIDE
+			game_state.player.flip = false
+			game_state.player.dir = Direction.SIDE
 		}
 		if dir != {0,0} {
-			P.velocity = math.lerp(P.velocity, dir * P.speed, f32(0.8))
+			game_state.player.velocity = math.lerp(game_state.player.velocity, dir *game_state.player.speed, f32(0.8))
 			if current_anim.name != .walk {current_anim = player_walk}
 		} else {
-			P.velocity = math.lerp(P.velocity, rl.Vector2{0,0}, f32(0.8))
+			game_state.player.velocity = math.lerp(game_state.player.velocity, rl.Vector2{0,0}, f32(0.8))
 			if current_anim.name != .idle {current_anim = player_idle}
 		}
-		P.collider.x = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileX) + game_state.PlayerP.TileRelX + P.velocity.x) * DT - P.collider.width/2.0
-		P.collider.y = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileY) + game_state.PlayerP.TileRelY + P.velocity.y) * DT - P.collider.height
+		game_state.player.collider.x = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileX) + game_state.PlayerP.TileRelX +game_state.player.velocity.x) * DT -game_state.player.collider.width/2.0
+		game_state.player.collider.y = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileY) + game_state.PlayerP.TileRelY +game_state.player.velocity.y) * DT -game_state.player.collider.height
 		
 		new_player_pos : TileMapPosition = game_state.PlayerP
-		new_player_pos.TileRelX += P.velocity.x * DT
-		new_player_pos.TileRelY += P.velocity.y * DT
+		new_player_pos.TileRelX +=game_state.player.velocity.x * DT
+		new_player_pos.TileRelY +=game_state.player.velocity.y * DT
 		new_player_pos = recanonicalizePosition(tilemap, new_player_pos)
 		PlayerLeft : TileMapPosition = new_player_pos
-		PlayerLeft.TileRelX -= 0.5*P.collider.width/tilemap.metersToPixels
+		PlayerLeft.TileRelX -= 0.5*game_state.player.collider.width/tilemap.metersToPixels
 		PlayerLeft = recanonicalizePosition(tilemap, PlayerLeft)
 		PlayerRight : TileMapPosition = new_player_pos
-		PlayerRight.TileRelX += 0.5*P.collider.width/tilemap.metersToPixels
+		PlayerRight.TileRelX += 0.5*game_state.player.collider.width/tilemap.metersToPixels
 		PlayerRight = recanonicalizePosition(tilemap, PlayerRight)
 		if  isTileMapPointEmpty(tilemap, new_player_pos) &&
 		isTileMapPointEmpty(tilemap, PlayerLeft) &&
 		isTileMapPointEmpty(tilemap, PlayerRight){
 			game_state.PlayerP = new_player_pos
 		}
-		P.collider.x = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileX) + game_state.PlayerP.TileRelX) - P.collider.width/2.0
-		P.collider.y = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileY) + game_state.PlayerP.TileRelY) - P.collider.height
+		game_state.player.collider.x = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileX) + game_state.PlayerP.TileRelX) -game_state.player.collider.width/2.0
+		game_state.player.collider.y = tilemap.metersToPixels*(tilemap.tileSideMeters*f32(game_state.PlayerP.AbsTileY) + game_state.PlayerP.TileRelY) -game_state.player.collider.height
 		accumulated_time -= DT
 	}
 	if rl.IsKeyPressed(.F8) {
@@ -284,9 +282,9 @@ draw :: proc(game_state: ^GameState) {
 		}
 	}
 	draw_animation(current_anim, {f32(tilemap.tileSidePixels*int(game_state.PlayerP.AbsTileX)) + tilemap.metersToPixels*game_state.PlayerP.TileRelX,
-			f32(tilemap.tileSidePixels*int(game_state.PlayerP.AbsTileY)) + tilemap.metersToPixels*game_state.PlayerP.TileRelY}, int(P.dir), P.flip)
+			f32(tilemap.tileSidePixels*int(game_state.PlayerP.AbsTileY)) + tilemap.metersToPixels*game_state.PlayerP.TileRelY}, int(game_state.player.dir),game_state.player.flip)
 	rl.DrawCircleV({f32(game_state.PlayerP.AbsTileX)*f32(tilemap.tileSidePixels),f32(game_state.PlayerP.AbsTileY)*f32(tilemap.tileSidePixels)},1,rl.RED)
-	rl.DrawRectangleRec(P.collider,{0,50,150,100}) //Debug Player Collider
+	rl.DrawRectangleRec(game_state.player.collider,{0,50,150,100}) //Debug Player Collider
 
 	rl.EndMode2D()
 	rl.EndDrawing()
@@ -302,6 +300,9 @@ draw :: proc(game_state: ^GameState) {
 
 @(export) game_quit :: proc(mem: rawptr) {
 	free(mem)
+}
+
+@(export) game_shutdown_window :: proc() {
 	rl.CloseWindow()
 }
 
